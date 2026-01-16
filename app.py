@@ -114,43 +114,65 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 4. FUNGSI GENERATE GAMBAR (FRIENDLY WARNING) ---
+# --- 4. FUNGSI GENERATE GAMBAR (DENGAN DEBUGGING LENGKAP) ---
 def generate_image_google(api_key, image_prompt):
+    # Kita coba endpoint standard untuk Imagen
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{IMAGE_MODEL}:predict?key={api_key}"
     headers = {'Content-Type': 'application/json'}
     
-    full_prompt = f"cartoon illustration for school, simple vector art, white background, educational safe content: {image_prompt}"
+    # Prompt disederhanakan untuk menghindari Safety Filter yang agresif
+    full_prompt = f"cartoon illustration, {image_prompt}, vector style, white background, no text"
     
     payload = {
         "instances": [{"prompt": full_prompt}],
-        "parameters": {"sampleCount": 1, "aspectRatio": "1:1"}
+        "parameters": {
+            "sampleCount": 1,
+            "aspectRatio": "1:1" 
+        }
     }
     
     try:
         response = requests.post(url, headers=headers, json=payload)
         
-        # JIKA ERROR HTTP (Misal 403/500)
+        # --- JIKA ERROR (Status bukan 200 OK) ---
         if response.status_code != 200:
-            st.warning("⚠️ Maaf gambar belum bisa di generate oleh system, bisa dicoba kembali nanti.")
+            st.warning("⚠️ Maaf gambar belum bisa di generate (Gagal Koneksi).")
+            
+            # FITUR DEBUG: Tampilkan detail error hanya jika diklik
+            with st.expander("🔍 Lihat Detail Error (Untuk Admin)"):
+                st.write(f"**Status Code:** {response.status_code}")
+                try:
+                    st.json(response.json()) # Coba tampilkan JSON error dari Google
+                except:
+                    st.write(response.text) # Jika bukan JSON, tampilkan teks biasa
+                
+                if response.status_code == 403:
+                    st.error("PENYEBAB: API Key tidak memiliki izin. Biasanya karena belum mengaktifkan Billing di Google Cloud Platform, meskipun modelnya terdeteksi.")
+                elif response.status_code == 400:
+                    st.error("PENYEBAB: Format request salah atau Prompt ditolak oleh Safety Filter.")
+            
             return None
         
+        # --- JIKA SUKSES ---
         result = response.json()
         
-        # JIKA SUKSES ADA GAMBAR
+        # Cek apakah ada prediksi gambar
         if 'predictions' in result and len(result['predictions']) > 0:
             b64_data = result['predictions'][0]['bytesBase64Encoded']
             image_bytes = base64.b64decode(b64_data)
             return BytesIO(image_bytes)
         else:
-            # JIKA SUKSES TAPI KOSONG (Safety Filter Block)
-            st.warning("⚠️ Maaf gambar belum bisa di generate oleh system, bisa dicoba kembali nanti.")
+            st.warning("⚠️ Gambar tidak muncul (Safety Filter Memblokir).")
+            with st.expander("🔍 Detail Response"):
+                st.json(result)
             return None
             
-    except Exception:
-        # JIKA ERROR KONEKSI DLL
-        st.warning("⚠️ Maaf gambar belum bisa di generate oleh system, bisa dicoba kembali nanti.")
+    except Exception as e:
+        st.warning("⚠️ Terjadi kesalahan sistem.")
+        with st.expander("Detail Exception"):
+            st.write(str(e))
         return None
-
+        
 # --- 5. FUNGSI GENERATE WORD (DOCX) ---
 def create_docx(data_soal, tipe, mapel, kelas, list_request):
     doc = Document()
@@ -405,3 +427,4 @@ st.markdown("""
     <p style='margin: 3px 0;'>Semua hak cipta dilindungi undang-undang</p>
 </div>
 """, unsafe_allow_html=True)
+
