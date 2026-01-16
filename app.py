@@ -57,20 +57,29 @@ DATABASE_MATERI = {
     }
 }
 
-# --- 3. STYLE CSS (FIXED SIDEBAR WIDTH) ---
+# --- 3. STYLE CSS (PADDING 20PX ADDED) ---
 st.markdown("""
 <style>
+    /* Import Font: League Spartan & Poppins */
     @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@500;700&family=Poppins:wght@400;600;700&display=swap');
     
     /* 1. Sidebar Background & FIXED WIDTH */
     [data-testid="stSidebar"] {
         background-color: #e6f3ff; 
         border-right: 1px solid #d1e5f0;
-        min-width: 320px !important; /* Kunci Lebar Minimal */
-        max-width: 320px !important; /* Kunci Lebar Maksimal */
+        min-width: 320px !important; 
+        max-width: 320px !important; 
     }
     
-    /* 2. Judul Utama */
+    /* 2. PADDING MAIN CONTENT */
+    .block-container {
+        padding-top: 20px !important;
+        padding-bottom: 20px !important;
+        padding-left: 20px !important;
+        padding-right: 20px !important;
+    }
+
+    /* 3. Judul Utama */
     h1 { 
         font-family: 'League Spartan', sans-serif !important; 
         font-weight: 700; 
@@ -88,7 +97,7 @@ st.markdown("""
         margin-bottom: 25px; 
     }
     
-    /* 3. INPUT LABEL */
+    /* 4. INPUT LABEL */
     .stSelectbox label, .stTextInput label, .stNumberInput label, .stRadio label {
         font-family: 'Poppins', sans-serif !important;
         font-size: 13px !important;
@@ -98,7 +107,7 @@ st.markdown("""
         letter-spacing: 0.5px;
     }
     
-    /* 4. Tombol Utama */
+    /* 5. Tombol Utama */
     .stButton>button { 
         width: 100%; 
         border-radius: 8px; 
@@ -109,11 +118,12 @@ st.markdown("""
         color: white;
     }
     
-    /* 5. Clean Sidebar */
+    /* 6. Clean Sidebar */
     div[data-testid="stSidebar"] div[data-testid="stVerticalBlock"] {
         gap: 0.5rem;
     }
     
+    /* Footer Info di Kartu Soal */
     .footer-info {
         font-family: 'Poppins', sans-serif;
         font-size: 12px;
@@ -220,10 +230,7 @@ if 'tipe_aktif' not in st.session_state: st.session_state.tipe_aktif = None
 # --- 7. SIDEBAR ---
 with st.sidebar:
     
-    # === PERBAIKAN POSISI LOGO ===
     if os.path.exists("logo.png"):
-        # Kita pakai kolom [1, 2, 1] agar logo ada di tengah dengan presisi
-        # Karena lebar sidebar sudah dikunci (320px), posisi ini akan stabil
         c1, c2, c3 = st.columns([1, 2, 1])
         with c2:
             st.image("logo.png", width=100)
@@ -347,3 +354,12 @@ with tab_uraian:
                 st.text_area("Jawab:", height=80, key=f"essay_{idx}")
                 with st.expander("Lihat Kunci Guru"):
                     st.write(item['pembahasan'])
+
+# --- 9. FOOTER COPYRIGHT (FIXED BOTTOM) ---
+st.markdown("""
+<div style='text-align: center; font-size: 16px; margin-top: 50px; padding-top: 20px; border-top: 1px solid #e0e0e0; color: #555; font-family: Poppins;'>
+    <p style='margin: 5px 0;'>Aplikasi Generator Soal ini Milik Bimbingan Belajar Digital "Akademi Pelajar"</p>
+    <p style='margin: 5px 0;'>Dilarang menyebarluaskan tanpa persetujuan tertulis dari Akademi Pelajar</p>
+    <p style='margin: 5px 0;'>Semua hak cipta dilindungi undang-undang</p>
+</div>
+""", unsafe_allow_html=True)
