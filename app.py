@@ -57,7 +57,7 @@ DATABASE_MATERI = {
     }
 }
 
-# --- 3. STYLE CSS ---
+# --- 3. STYLE CSS (UPDATED UNTUK LOGO) ---
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&family=Roboto:wght@700&display=swap');
@@ -75,6 +75,11 @@ st.markdown("""
         margin-top: 8px; 
         padding-top: 5px;
         border-top: 1px dotted #ccc;
+    }
+
+    /* TRIK AGAR SIDEBAR LEBIH NAIK KE ATAS */
+    section[data-testid="stSidebar"] > div > div:first-child {
+        padding-top: 1rem;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -172,10 +177,13 @@ if 'tipe_aktif' not in st.session_state: st.session_state.tipe_aktif = None
 # --- 7. SIDEBAR (PANEL GURU + LOGO) ---
 with st.sidebar:
     
-    # === FITUR LOGO (DIPERBAIKI) ===
+    # === FITUR LOGO (CENTER + 100px) ===
     if os.path.exists("logo.png"):
-        # Width 200px sesuai request
-        st.image("logo.png", width=200)
+        # Kita pakai 3 kolom: [Kiri-Kosong, Tengah-Logo, Kanan-Kosong]
+        # Rasio [1, 2, 1] biasanya pas untuk centering di sidebar
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.image("logo.png", width=100)
     else:
         st.caption("Admin: Upload 'logo.png' ke GitHub.")
     
