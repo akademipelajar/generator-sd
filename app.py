@@ -1,7 +1,6 @@
 import streamlit as st
 import json
 import requests
-import google.generativeai as genai # Tambahan library untuk cek model
 from io import BytesIO
 from docx import Document
 from docx.shared import Pt, RGBColor
@@ -184,27 +183,36 @@ with st.sidebar:
     if "GOOGLE_API_KEY" in st.secrets: api_key = st.secrets["GOOGLE_API_KEY"]
     else: api_key = st.text_input("🔑 API Key", type="password")
 
-    # --- FITUR DETEKTIF MODEL (BARU) ---
+    # --- FITUR DETEKTIF MODEL (VERSI AMAN / DIRECT API) ---
     with st.expander("🕵️ Cek Fitur Akun (Admin)"):
         if st.button("Cek Apakah Bisa Gambar?"):
             if not api_key:
                 st.error("API Key kosong.")
             else:
                 try:
-                    genai.configure(api_key=api_key)
-                    models = genai.list_models()
-                    found = False
-                    st.write("Hasil Scan Model:")
-                    for m in models:
-                        # Cek jika ada model gambar
-                        if 'image' in m.name or 'vision' in m.name:
-                            st.success(f"✅ DITEMUKAN: {m.name}")
-                            found = True
-                    if not found:
-                        st.warning("❌ Belum ada model gambar (Imagen).")
-                        st.caption("Tetap gunakan mode Teks Deskriptif ya.")
+                    # KITA PAKAI REQUESTS, BUKAN GOOGLE LIBRARY
+                    check_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+                    response = requests.get(check_url)
+                    
+                    if response.status_code == 200:
+                        data = response.json()
+                        models = data.get('models', [])
+                        found = False
+                        st.write("Hasil Scan Model:")
+                        for m in models:
+                            nama_model = m.get('name', '')
+                            # Cek jika ada model gambar
+                            if 'image' in nama_model.lower() or 'vision' in nama_model.lower():
+                                st.success(f"✅ DITEMUKAN: {nama_model}")
+                                found = True
+                        if not found:
+                            st.warning("❌ Belum ada model gambar (Imagen).")
+                            st.caption("Tetap gunakan mode Teks Deskriptif ya.")
+                    else:
+                        st.error(f"Gagal koneksi: {response.status_code}")
+                        
                 except Exception as e:
-                    st.error(f"Gagal cek: {e}")
+                    st.error(f"Error: {e}")
     # -----------------------------------
 
     st.divider()
