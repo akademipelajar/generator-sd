@@ -57,47 +57,56 @@ DATABASE_MATERI = {
     }
 }
 
-# --- 3. STYLE CSS (REVISI FONT SIZE) ---
+# --- 3. STYLE CSS (REVISI CSS) ---
 st.markdown("""
 <style>
-    /* Import Font: League Spartan & Poppins */
+    /* Import Font */
     @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@500;700&family=Poppins:wght@400;600;700&display=swap');
     
-    /* 1. Sidebar Background: Biru Sangat Tipis (Soft Blue) */
+    /* 1. Sidebar Background */
     [data-testid="stSidebar"] {
         background-color: #e6f3ff; 
         border-right: 1px solid #d1e5f0;
     }
     
-    /* 2. Judul Utama (League Spartan - Ukuran 30px) */
+    /* 2. Judul Utama */
     h1 { 
         font-family: 'League Spartan', sans-serif !important; 
         font-weight: 700; 
         color: #1a1a1a; 
-        font-size: 30px !important; /* UPDATED: 30px */
+        font-size: 30px !important;
         margin-bottom: 5px !important;
     }
     
-    /* Subtitle (Ukuran 18px) */
+    /* Subtitle */
     .subtitle { 
         font-family: 'Poppins', sans-serif !important; 
-        font-size: 18px; /* UPDATED: 18px */
+        font-size: 18px;
         color: #666666; 
         margin-top: 0px; 
         margin-bottom: 25px; 
     }
     
-    /* 3. INPUT LABEL: BOLD, HITAM, UPPERCASE */
-    .stSelectbox label, .stTextInput label, .stNumberInput label, .stRadio label {
+    /* 3. INPUT LABEL (Sidebar): Tetap BOLD & UPPERCASE */
+    .stSelectbox label, .stTextInput label, .stNumberInput label {
         font-family: 'Poppins', sans-serif !important;
         font-size: 13px !important;
-        font-weight: 800 !important; /* Sangat Tebal */
-        color: #000000 !important; /* Hitam Pekat */
+        font-weight: 800 !important;
+        color: #000000 !important;
         text-transform: uppercase;
         letter-spacing: 0.5px;
     }
     
-    /* 4. Tombol Utama */
+    /* 4. LABEL RADIO BUTTON (Opsi Jawaban): STANDARD CASE (Normal) */
+    .stRadio label {
+        font-family: 'Poppins', sans-serif !important;
+        font-size: 15px !important;
+        font-weight: 400 !important; /* Normal weight */
+        color: #333333 !important;
+        text-transform: none !important; /* Jangan dikapital semua */
+    }
+    
+    /* 5. Tombol Utama */
     .stButton>button { 
         width: 100%; 
         border-radius: 8px; 
@@ -108,7 +117,7 @@ st.markdown("""
         color: white;
     }
     
-    /* 5. Clean Sidebar */
+    /* 6. Clean Sidebar */
     div[data-testid="stSidebar"] div[data-testid="stVerticalBlock"] {
         gap: 0.5rem;
     }
@@ -142,7 +151,8 @@ def create_docx(data_soal, tipe, mapel, kelas, list_request):
     for idx, item in enumerate(data_soal):
         req_data = list_request[idx]
         p = doc.add_paragraph()
-        p.add_run(f"{idx+1}. {item['soal']}").bold = True
+        # Perbaikan: Hapus bold pada nomor soal di word jika diinginkan, tapi standardnya bold
+        p.add_run(f"{idx+1}. {item['soal']}").bold = True 
         
         if tipe == "Pilihan Ganda":
             for op in item['opsi']: doc.add_paragraph(f"    {op}")
@@ -184,7 +194,8 @@ def generate_soal_multi_granular(api_key, tipe_soal, kelas, mapel, list_request)
         req_str += f"- Soal No {i+1}: Topik '{req['topik']}' dengan Level '{req['level']}'\n"
 
     if tipe_soal == "Pilihan Ganda":
-        json_structure = """[{"no":1,"soal":"...","opsi":["A. ...","B. ...","C. ...","D. ..."],"kunci_index":0,"pembahasan":"..."}]"""
+        # Instruksi diperjelas: Format opsi standar
+        json_structure = """[{"no":1,"soal":"...","opsi":["A. Teks jawaban","B. Teks jawaban","C. Teks jawaban","D. Teks jawaban"],"kunci_index":0,"pembahasan":"..."}]"""
     else:
         json_structure = """[{"no":1,"soal":"...","poin_kunci":["..."],"pembahasan":"..."}]"""
 
@@ -198,6 +209,8 @@ def generate_soal_multi_granular(api_key, tipe_soal, kelas, mapel, list_request)
     ATURAN SANGAT PENTING:
     1. JANGAN PERNAH membuat soal yang merujuk pada gambar visual. Semua soal harus DESKRIPTIF (Soal Cerita).
     2. HINDARI format LaTeX ($). Gunakan simbol keyboard standar (1/2, +, :, x).
+    3. PENULISAN: Gunakan Ejaan Yang Disempurnakan (EYD). Awal kalimat huruf besar, sisanya kecil kecuali nama diri. JANGAN HURUF KAPITAL SEMUA.
+    4. JANGAN sertakan nomor soal atau tanda bintang (**) di dalam teks json 'soal'.
     
     Output WAJIB JSON Array Murni:
     {json_structure}
@@ -215,10 +228,9 @@ def generate_soal_multi_granular(api_key, tipe_soal, kelas, mapel, list_request)
 if 'hasil_soal' not in st.session_state: st.session_state.hasil_soal = None
 if 'tipe_aktif' not in st.session_state: st.session_state.tipe_aktif = None
 
-# --- 7. SIDEBAR (KONFIGURASI UTAMA PANEL GURU) ---
+# --- 7. SIDEBAR ---
 with st.sidebar:
     
-    # === PERBAIKAN LOGO (CLEAN, CENTER) ===
     if os.path.exists("logo.png"):
         c1, c2, c3 = st.columns([1, 2, 1])
         with c2:
@@ -226,14 +238,11 @@ with st.sidebar:
     else:
         st.caption("Admin: Upload logo.png")
     
-    # Tulisan Panel Guru (Font League Spartan, Center)
     st.markdown("<h3 style='text-align: center; font-family: League Spartan; font-size:18px; margin-top:0;'>KONFIGURASI UTAMA<br>PANEL GURU</h3>", unsafe_allow_html=True)
     
-    # API KEY INPUT
     if "GOOGLE_API_KEY" in st.secrets: api_key = st.secrets["GOOGLE_API_KEY"]
     else: api_key = st.text_input("🔑 API KEY", type="password")
 
-    # DETEKTIF MODEL (HIDDEN EXPANDER)
     with st.expander("🕵️ Cek Fitur"):
         if st.button("Cek Imagen"):
             if not api_key: st.error("No Key")
@@ -248,19 +257,15 @@ with st.sidebar:
 
     st.markdown("---") 
     
-    # --- INPUT UTAMA ---
     kelas = st.selectbox("KELAS", [f"{i} SD" for i in range(1, 7)], index=5)
-    
     mapel = st.selectbox("MATA PELAJARAN", ["Matematika", "IPA", "Bahasa Indonesia", "Bahasa Inggris"])
     
     st.divider()
     
-    # JUMLAH SOAL 1-5
     jml_soal = st.selectbox("JUMLAH SOAL", [1, 2, 3, 4, 5])
     
     list_request_user = [] 
     
-    # Header Kecil
     st.markdown("<br><div style='font-weight:bold; font-size:14px; border-bottom:1px solid #ccc; margin-bottom:10px; color:#333;'>KONFIGURASI PER SOAL</div>", unsafe_allow_html=True)
     
     for i in range(jml_soal):
@@ -275,7 +280,7 @@ with st.sidebar:
         level_selected = st.selectbox(f"LEVEL SOAL {i+1}", ["Mudah", "Sedang", "Sulit (HOTS)"], key=f"lvl_{i}")
         
         list_request_user.append({"topik": topik_selected, "level": level_selected})
-        st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True) # Spasi
+        st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
 
     if st.button("🗑️ Reset"):
         st.session_state.hasil_soal = None
@@ -307,8 +312,18 @@ with tab_pg:
         for idx, item in enumerate(data):
             info_req = list_request_user[idx]
             with st.container(border=True):
-                st.write(f"**{idx+1}. {item['soal']}**")
-                ans = st.radio(f"Jawab {idx+1}", item['opsi'], key=f"rad_{idx}", index=None)
+                # REVISI 1: Menghapus tanda ** di python, pakai normal text saja
+                st.write(f"{idx+1}. {item['soal']}") 
+                
+                # REVISI 2: Menghapus label "Jawab 1" dengan label_visibility="collapsed"
+                ans = st.radio(
+                    f"Label_hidden_{idx}", # Label tetap butuh string unik, tapi tidak ditampilkan
+                    item['opsi'], 
+                    key=f"rad_{idx}", 
+                    index=None,
+                    label_visibility="collapsed" # <--- INI KUNCINYA
+                )
+                
                 st.markdown(f"<div class='footer-info'>Materi: {info_req['topik']} | Kesulitan: {info_req['level']}</div>", unsafe_allow_html=True)
                 with st.expander("Kunci Jawaban"):
                     if ans is None: st.info("Pilih jawaban dulu.")
@@ -337,7 +352,9 @@ with tab_uraian:
         for idx, item in enumerate(data):
             info_req = list_request_user[idx]
             with st.container(border=True):
+                # REVISI 1: Teks normal tanpa bold markdown berlebih
                 st.write(f"**Soal {idx+1}:** {item['soal']}")
+                
                 st.markdown(f"<div class='footer-info'>Materi: {info_req['topik']} | Kesulitan: {info_req['level']}</div>", unsafe_allow_html=True)
                 st.text_area("Jawab:", height=80, key=f"essay_{idx}")
                 with st.expander("Lihat Kunci Guru"):
