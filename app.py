@@ -147,7 +147,7 @@ def create_docx(data_soal, tipe, mapel, kelas, list_request):
         if tipe == "Pilihan Ganda":
             for op in item['opsi']: doc.add_paragraph(f"    {op}")
         else:
-            doc.add_paragraph("\n" * 3) 
+            doc.add_paragraph("\n" * 5) 
 
         p_footer = doc.add_paragraph(f"Materi: {req_data['topik']} | Level: {req_data['level']}")
         p_footer.italic = True
@@ -215,7 +215,7 @@ def generate_soal_multi_granular(api_key, tipe_soal, kelas, mapel, list_request)
 if 'hasil_soal' not in st.session_state: st.session_state.hasil_soal = None
 if 'tipe_aktif' not in st.session_state: st.session_state.tipe_aktif = None
 
-# --- 7. SIDEBAR (PANEL GURU) ---
+# --- 7. SIDEBAR (KONFIGURASI UTAMA PANEL GURU) ---
 with st.sidebar:
     
     # === PERBAIKAN LOGO (CLEAN, NO CARD) ===
@@ -228,7 +228,7 @@ with st.sidebar:
         st.caption("Admin: Upload logo.png")
     
     # Tulisan Panel Guru (Font League Spartan, Center)
-    st.markdown("<h3 style='text-align: center; font-family: League Spartan; margin-top:0;'>PANEL GURU</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align: center; font-family: League Spartan; margin-top:0;'>KONFIGURASI UTAMA PANEL GURU</h3>", unsafe_allow_html=True)
     
     # API KEY INPUT
     if "GOOGLE_API_KEY" in st.secrets: api_key = st.secrets["GOOGLE_API_KEY"]
@@ -256,7 +256,7 @@ with st.sidebar:
     
     st.divider()
     
-    jml_soal = st.selectbox("JUMLAH SOAL", [1, 2, 3])
+    jml_soal = st.selectbox("JUMLAH SOAL", [1, 2, 3, 4, 5])
     
     list_request_user = [] 
     
@@ -342,4 +342,5 @@ with tab_uraian:
                 st.text_area("Jawab:", height=80, key=f"essay_{idx}")
                 with st.expander("Lihat Kunci Guru"):
                     st.write(item['pembahasan'])
+
 
