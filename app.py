@@ -172,25 +172,25 @@ if 'tipe_aktif' not in st.session_state: st.session_state.tipe_aktif = None
 # --- 7. SIDEBAR (PANEL GURU + LOGO) ---
 with st.sidebar:
     
+    # === FITUR LOGO (DIPERBAIKI) ===
     if os.path.exists("logo.png"):
-        st.image("logo.png", use_container_width=True)
+        # Width 200px sesuai request
+        st.image("logo.png", width=200)
     else:
-        # Tampilkan teks jika logo tidak ada
-        st.caption("Admin: Upload 'logo.png' ke GitHub untuk ganti ini.")
+        st.caption("Admin: Upload 'logo.png' ke GitHub.")
     
     st.header("⚙️ Panel Guru")
     
     if "GOOGLE_API_KEY" in st.secrets: api_key = st.secrets["GOOGLE_API_KEY"]
     else: api_key = st.text_input("🔑 API Key", type="password")
 
-    # --- FITUR DETEKTIF MODEL (VERSI AMAN / DIRECT API) ---
+    # --- FITUR DETEKTIF MODEL ---
     with st.expander("🕵️ Cek Fitur Akun (Admin)"):
         if st.button("Cek Apakah Bisa Gambar?"):
             if not api_key:
                 st.error("API Key kosong.")
             else:
                 try:
-                    # KITA PAKAI REQUESTS, BUKAN GOOGLE LIBRARY
                     check_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
                     response = requests.get(check_url)
                     
@@ -201,16 +201,13 @@ with st.sidebar:
                         st.write("Hasil Scan Model:")
                         for m in models:
                             nama_model = m.get('name', '')
-                            # Cek jika ada model gambar
                             if 'image' in nama_model.lower() or 'vision' in nama_model.lower():
                                 st.success(f"✅ DITEMUKAN: {nama_model}")
                                 found = True
                         if not found:
-                            st.warning("❌ Belum ada model gambar (Imagen).")
-                            st.caption("Tetap gunakan mode Teks Deskriptif ya.")
+                            st.warning("❌ Belum ada model gambar.")
                     else:
                         st.error(f"Gagal koneksi: {response.status_code}")
-                        
                 except Exception as e:
                     st.error(f"Error: {e}")
     # -----------------------------------
