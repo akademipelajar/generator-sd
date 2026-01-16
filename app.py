@@ -57,16 +57,21 @@ DATABASE_MATERI = {
     }
 }
 
-# --- 3. STYLE CSS (UPDATED UNTUK LOGO) ---
+# --- 3. STYLE CSS (BACKGROUND GRADASI) ---
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&family=Roboto:wght@700&display=swap');
     
+    /* Font Judul Utama */
     h1 { font-family: 'Roboto', sans-serif !important; font-weight: 700; color: #1F1F1F; }
+    
+    /* Font Subtitle */
     .subtitle { font-family: 'Poppins', sans-serif !important; font-size: 18px; color: #555555; margin-top: -15px; margin-bottom: 25px; }
     
+    /* Tombol */
     .stButton>button { width: 100%; border-radius: 8px; height: 3em; font-family: 'Poppins', sans-serif; font-weight: 600; }
     
+    /* Footer Info */
     .footer-info { 
         font-family: 'Poppins', sans-serif;
         font-size: 12px; 
@@ -77,9 +82,22 @@ st.markdown("""
         border-top: 1px dotted #ccc;
     }
 
-    /* TRIK AGAR SIDEBAR LEBIH NAIK KE ATAS */
+    /* === REVISI: BACKGROUND SIDEBAR GRADASI BIRU === */
+    [data-testid="stSidebar"] {
+        background-image: linear-gradient(#5fabf2, #e4f3ff);
+        color: #000000; /* Warna teks sidebar agar tetap terbaca */
+    }
+
+    /* Posisi Logo Center & Naik ke Atas */
     section[data-testid="stSidebar"] > div > div:first-child {
         padding-top: 1rem;
+        text-align: center;
+    }
+    
+    /* Agar tulisan di sidebar (label input) sedikit lebih tebal/gelap agar kontras dengan biru */
+    .stSelectbox label, .stTextInput label, .stRadio label {
+        color: #000000 !important;
+        font-weight: 600;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -179,8 +197,7 @@ with st.sidebar:
     
     # === FITUR LOGO (CENTER + 100px) ===
     if os.path.exists("logo.png"):
-        # Kita pakai 3 kolom: [Kiri-Kosong, Tengah-Logo, Kanan-Kosong]
-        # Rasio [1, 2, 1] biasanya pas untuk centering di sidebar
+        # Centering Logo dengan Column
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
             st.image("logo.png", width=100)
