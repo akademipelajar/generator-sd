@@ -74,14 +74,14 @@ st.markdown("""
         font-family: 'League Spartan', sans-serif !important; 
         font-weight: 700; 
         color: #1a1a1a; 
-        font-size: 28px !important; /* Diperkecil sesuai request (compact header) */
+        font-size: 30px !important; /* Diperkecil sesuai request (compact header) */
         margin-bottom: 0px !important;
     }
     
     /* Subtitle */
     .subtitle { 
         font-family: 'Poppins', sans-serif !important; 
-        font-size: 14px; 
+        font-size: 18px; 
         color: #666666; 
         margin-top: -5px; 
         margin-bottom: 25px; 
@@ -342,3 +342,4 @@ with tab_uraian:
                 st.text_area("Jawab:", height=80, key=f"essay_{idx}")
                 with st.expander("Lihat Kunci Guru"):
                     st.write(item['pembahasan'])
+
