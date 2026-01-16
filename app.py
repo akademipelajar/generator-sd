@@ -9,15 +9,15 @@ import os
 
 # --- 1. KONFIGURASI HALAMAN ---
 st.set_page_config(
-    page_title="Generator Soal SD Pro",
-    page_icon="📚",
+    page_title="Akademi Pelajar - Generator Soal",
+    page_icon="🎓",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 MODEL_NAME = "gemini-2.5-flash"
 
-# --- 2. DATABASE MATERI LENGKAP ---
+# --- 2. DATABASE MATERI (SAMA SEPERTI SEBELUMNYA) ---
 DATABASE_MATERI = {
     "1 SD": {
         "Matematika": ["Bilangan sampai 10", "Penjumlahan & Pengurangan", "Bentuk Bangun Datar", "Mengukur Panjang Benda", "Mengenal Waktu"],
@@ -57,48 +57,108 @@ DATABASE_MATERI = {
     }
 }
 
-# --- 3. STYLE CSS (BACKGROUND GRADASI) ---
+# --- 3. STYLE CSS (ELEGANT CHIC VERSION) ---
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&family=Roboto:wght@700&display=swap');
+    /* Import Font: Playfair Display (Judul) & Poppins (Body) */
+    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Poppins:wght@400;600;700&display=swap');
     
-    /* Font Judul Utama */
-    h1 { font-family: 'Roboto', sans-serif !important; font-weight: 700; color: #1F1F1F; }
+    /* 1. Judul Utama (Elegan) */
+    h1 { 
+        font-family: 'Playfair Display', serif !important; 
+        font-weight: 700; 
+        color: #1a1a1a; 
+        font-size: 3rem !important;
+        margin-bottom: 0px !important;
+    }
     
-    /* Font Subtitle */
-    .subtitle { font-family: 'Poppins', sans-serif !important; font-size: 18px; color: #555555; margin-top: -15px; margin-bottom: 25px; }
+    /* 2. Subtitle */
+    .subtitle { 
+        font-family: 'Poppins', sans-serif !important; 
+        font-size: 16px; 
+        color: #666666; 
+        letter-spacing: 1px;
+        margin-top: -10px; 
+        margin-bottom: 30px; 
+        border-bottom: 2px solid #5fabf2; /* Garis aksen kecil */
+        display: inline-block;
+        padding-bottom: 5px;
+    }
     
-    /* Tombol */
-    .stButton>button { width: 100%; border-radius: 8px; height: 3em; font-family: 'Poppins', sans-serif; font-weight: 600; }
+    /* 3. Sidebar Background (Soft Royal Gradient) */
+    [data-testid="stSidebar"] {
+        background-image: linear-gradient(180deg, #E3F2FD 0%, #FFFFFF 100%);
+        border-right: 1px solid #e0e0e0;
+    }
+    
+    /* 4. CUSTOM LABEL INPUT (Request Anda: Besar & Bold) */
+    .stSelectbox label, .stTextInput label, .stNumberInput label {
+        font-family: 'Poppins', sans-serif !important;
+        font-size: 16px !important;
+        font-weight: 700 !important; /* BOLD */
+        color: #2c3e50 !important; /* Warna Biru Gelap Tua */
+        text-transform: uppercase; /* Opsional: Biar lebih tegas */
+        letter-spacing: 0.5px;
+    }
+    
+    /* Label untuk Radio Button juga */
+    .stRadio label {
+        font-family: 'Poppins', sans-serif !important;
+        font-size: 14px !important;
+        font-weight: 600 !important;
+    }
+
+    /* 5. Tombol Utama (Chic Gradient) */
+    .stButton>button { 
+        width: 100%; 
+        border-radius: 12px; 
+        height: 3.5em; 
+        font-family: 'Poppins', sans-serif; 
+        font-weight: 600; 
+        background: linear-gradient(45deg, #2196F3, #21CBF3); /* Gradasi Biru Cerah */
+        color: white;
+        border: none;
+        box-shadow: 0 4px 15px rgba(33, 150, 243, 0.3); /* Bayangan Glow */
+        transition: all 0.3s ease;
+    }
+    .stButton>button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(33, 150, 243, 0.4);
+    }
+    
+    /* 6. Card Styling (Kotak Putih dengan Bayangan Halus) */
+    div[data-testid="stExpander"], div[data-testid="stVerticalBlock"] > div {
+        background-color: white;
+        border-radius: 10px;
+    }
+    
+    /* Container Konfigurasi Soal */
+    .config-card {
+        background: #ffffff;
+        padding: 20px;
+        border-radius: 15px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05); /* Soft Shadow */
+        border: 1px solid #f0f0f0;
+        margin-bottom: 15px;
+    }
+    
+    /* Logo Positioning */
+    section[data-testid="stSidebar"] > div > div:first-child {
+        text-align: center;
+        padding-top: 2rem;
+        padding-bottom: 1rem;
+    }
     
     /* Footer Info */
-    .footer-info { 
+    .footer-info {
         font-family: 'Poppins', sans-serif;
-        font-size: 12px; 
-        font-style: italic; 
-        color: #888; 
-        margin-top: 8px; 
-        padding-top: 5px;
-        border-top: 1px dotted #ccc;
+        font-size: 12px;
+        color: #888;
+        border-top: 1px solid #eee;
+        padding-top: 10px;
+        margin-top: 10px;
     }
 
-    /* === REVISI: BACKGROUND SIDEBAR GRADASI BIRU === */
-    [data-testid="stSidebar"] {
-        background-image: linear-gradient(#5fabf2, #e4f3ff);
-        color: #000000; /* Warna teks sidebar agar tetap terbaca */
-    }
-
-    /* Posisi Logo Center & Naik ke Atas */
-    section[data-testid="stSidebar"] > div > div:first-child {
-        padding-top: 1rem;
-        text-align: center;
-    }
-    
-    /* Agar tulisan di sidebar (label input) sedikit lebih tebal/gelap agar kontras dengan biru */
-    .stSelectbox label, .stTextInput label, .stRadio label {
-        color: #000000 !important;
-        font-weight: 600;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -195,30 +255,25 @@ if 'tipe_aktif' not in st.session_state: st.session_state.tipe_aktif = None
 # --- 7. SIDEBAR (PANEL GURU + LOGO) ---
 with st.sidebar:
     
-    # === FITUR LOGO (CENTER + 100px) ===
+    # === LOGO ===
     if os.path.exists("logo.png"):
-        # Centering Logo dengan Column
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
             st.image("logo.png", width=100)
-    else:
-        st.caption("Admin: Upload 'logo.png' ke GitHub.")
     
-    st.header("⚙️ Panel Guru")
+    st.markdown("<h3 style='text-align: center; font-family: Poppins;'>Panel Guru</h3>", unsafe_allow_html=True)
     
     if "GOOGLE_API_KEY" in st.secrets: api_key = st.secrets["GOOGLE_API_KEY"]
     else: api_key = st.text_input("🔑 API Key", type="password")
 
-    # --- FITUR DETEKTIF MODEL ---
+    # --- DETEKTIF MODEL ---
     with st.expander("🕵️ Cek Fitur Akun (Admin)"):
         if st.button("Cek Apakah Bisa Gambar?"):
-            if not api_key:
-                st.error("API Key kosong.")
+            if not api_key: st.error("API Key kosong.")
             else:
                 try:
                     check_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
                     response = requests.get(check_url)
-                    
                     if response.status_code == 200:
                         data = response.json()
                         models = data.get('models', [])
@@ -229,38 +284,48 @@ with st.sidebar:
                             if 'image' in nama_model.lower() or 'vision' in nama_model.lower():
                                 st.success(f"✅ DITEMUKAN: {nama_model}")
                                 found = True
-                        if not found:
-                            st.warning("❌ Belum ada model gambar.")
-                    else:
-                        st.error(f"Gagal koneksi: {response.status_code}")
-                except Exception as e:
-                    st.error(f"Error: {e}")
-    # -----------------------------------
+                        if not found: st.warning("❌ Belum ada model gambar.")
+                    else: st.error(f"Gagal koneksi: {response.status_code}")
+                except Exception as e: st.error(f"Error: {e}")
+    # -----------------------
 
     st.divider()
     
+    # -- INPUT UTAMA --
     kelas = st.selectbox("Kelas", [f"{i} SD" for i in range(1, 7)], index=5)
-    mapel = st.selectbox("Mapel", ["Matematika", "IPA", "Bahasa Indonesia", "Bahasa Inggris"])
+    
+    # REVISI LABEL: "Mapel" -> "Mata Pelajaran"
+    mapel = st.selectbox("Mata Pelajaran", ["Matematika", "IPA", "Bahasa Indonesia", "Bahasa Inggris"])
     
     st.divider()
     
-    jml_soal = st.selectbox("Jumlah Soal:", [1, 2, 3])
+    jml_soal = st.selectbox("Jumlah Soal", [1, 2, 3])
     
     list_request_user = [] 
     
-    st.markdown("### 📝 Konfigurasi Per Soal")
+    st.markdown("---")
+    st.markdown("<h4 style='font-family:Poppins; font-size:16px;'>📝 Konfigurasi Per Soal</h4>", unsafe_allow_html=True)
     
     for i in range(jml_soal):
-        with st.container():
-            st.markdown(f"**Soal Nomor {i+1}**")
-            daftar_materi = DATABASE_MATERI.get(kelas, {}).get(mapel, [])
+        # MENGGUNAKAN STYLE CARD KHUSUS
+        st.markdown(f"""
+        <div class="config-card">
+            <div style="font-weight:bold; margin-bottom:5px; color:#555;">Soal Nomor {i+1}</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        daftar_materi = DATABASE_MATERI.get(kelas, {}).get(mapel, [])
+        
+        # REVISI LABEL: "Materi Soal" dan "Level Soal"
+        if daftar_materi: 
+            topik_selected = st.selectbox(f"Materi Soal {i+1}", daftar_materi, key=f"topik_{i}")
+        else: 
+            topik_selected = st.text_input(f"Materi Soal {i+1} (Manual)", key=f"topik_{i}")
             
-            if daftar_materi: topik_selected = st.selectbox(f"Materi Soal {i+1}", daftar_materi, key=f"topik_{i}")
-            else: topik_selected = st.text_input(f"Materi Soal {i+1} (Manual)", key=f"topik_{i}")
-                
-            level_selected = st.selectbox(f"Level Soal {i+1}", ["Mudah", "Sedang", "Sulit (HOTS)"], key=f"lvl_{i}")
-            list_request_user.append({"topik": topik_selected, "level": level_selected})
-            st.markdown("---")
+        level_selected = st.selectbox(f"Level Soal {i+1}", ["Mudah", "Sedang", "Sulit (HOTS)"], key=f"lvl_{i}")
+        
+        list_request_user.append({"topik": topik_selected, "level": level_selected})
+        st.markdown("<br>", unsafe_allow_html=True) # Spasi
 
     if st.button("🗑️ Reset Konfigurasi"):
         st.session_state.hasil_soal = None
@@ -292,7 +357,7 @@ with tab_pg:
         for idx, item in enumerate(data):
             info_req = list_request_user[idx]
             with st.container(border=True):
-                st.write(f"**{idx+1}. {item['soal']}**")
+                st.markdown(f"**{idx+1}. {item['soal']}**") # Markdown agar bold lebih tegas
                 ans = st.radio(f"Jawab {idx+1}", item['opsi'], key=f"rad_{idx}", index=None)
                 st.markdown(f"<div class='footer-info'>Materi: {info_req['topik']} | Kesulitan: {info_req['level']}</div>", unsafe_allow_html=True)
                 with st.expander("Kunci Jawaban"):
