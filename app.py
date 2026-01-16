@@ -16,9 +16,10 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- KONFIGURASI MODEL ---
-# KITA GANTI KE VERSI 1.5 AGAR KUOTA LEBIH BANYAK & STABIL
-TEXT_MODEL = "gemini-1.5-flash" 
+# --- KONFIGURASI MODEL (SOLUSI 404 & 429) ---
+# Kita gunakan model yang TERDETEKSI di screenshot Anda sebelumnya
+# gemini-2.0-flash-exp biasanya gratis dan tersedia untuk akun preview seperti milik Anda
+TEXT_MODEL = "gemini-2.0-flash-exp"
 
 # --- 2. DATABASE MATERI ---
 DATABASE_MATERI = {
@@ -60,11 +61,13 @@ DATABASE_MATERI = {
     }
 }
 
-# --- 3. STYLE CSS ---
+# --- 3. STYLE CSS (ELEGANT CHIC + FIXED SIDEBAR) ---
 st.markdown("""
 <style>
+    /* Import Font: League Spartan & Poppins */
     @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@500;700&family=Poppins:wght@400;600;700&display=swap');
     
+    /* 1. Sidebar Background & FIXED WIDTH */
     [data-testid="stSidebar"] {
         background-color: #e6f3ff; 
         border-right: 1px solid #d1e5f0;
@@ -72,59 +75,94 @@ st.markdown("""
         max-width: 320px !important; 
     }
     
-    .block-container { padding: 20px !important; }
+    /* 2. PADDING MAIN CONTENT */
+    .block-container {
+        padding: 20px !important;
+    }
 
+    /* 3. Judul Utama */
     h1 { 
         font-family: 'League Spartan', sans-serif !important; 
-        font-weight: 700; color: #1a1a1a; font-size: 30px !important; margin-bottom: 5px !important;
+        font-weight: 700; 
+        color: #1a1a1a; 
+        font-size: 30px !important; 
+        margin-bottom: 5px !important;
     }
     
+    /* Subtitle */
     .subtitle { 
-        font-family: 'Poppins', sans-serif !important; font-size: 18px; color: #666666; margin-top: 0px; margin-bottom: 25px; 
+        font-family: 'Poppins', sans-serif !important; 
+        font-size: 18px; 
+        color: #666666; 
+        margin-top: 0px; 
+        margin-bottom: 25px; 
     }
     
-    .stSelectbox label, .stTextInput label, .stNumberInput label, .stRadio label, .stCheckbox label {
+    /* 4. INPUT LABEL */
+    .stSelectbox label, .stTextInput label, .stNumberInput label {
         font-family: 'Poppins', sans-serif !important;
-        color: #000000 !important;
-    }
-    
-    .stSelectbox label, .stTextInput label {
         font-size: 13px !important;
         font-weight: 800 !important;
+        color: #000000 !important;
         text-transform: uppercase;
         letter-spacing: 0.5px;
     }
 
+    /* Opsi Jawaban Radio */
     .stRadio label {
+        font-family: 'Poppins', sans-serif !important;
         font-size: 15px !important;
         font-weight: 400 !important;
+        color: #333333 !important;
         text-transform: none !important;
     }
     
-    .stButton>button { 
-        width: 100%; border-radius: 8px; height: 3em; 
-        font-family: 'Poppins', sans-serif; font-weight: 600; 
-        background-color: #2196F3; color: white;
+    /* Checkbox Label */
+    .stCheckbox label {
+        font-family: 'Poppins', sans-serif !important;
+        color: #000000 !important;
     }
     
+    /* 5. Tombol Utama */
+    .stButton>button { 
+        width: 100%; 
+        border-radius: 8px; 
+        height: 3em; 
+        font-family: 'Poppins', sans-serif; 
+        font-weight: 600; 
+        background-color: #2196F3; 
+        color: white;
+    }
+    
+    /* 6. Clean Sidebar */
+    div[data-testid="stSidebar"] div[data-testid="stVerticalBlock"] {
+        gap: 0.5rem;
+    }
+    
+    /* Footer Info di Kartu Soal */
     .footer-info {
-        font-family: 'Poppins', sans-serif; font-size: 12px; color: #888;
-        border-top: 1px dashed #ccc; padding-top: 5px; margin-top: 5px;
+        font-family: 'Poppins', sans-serif;
+        font-size: 12px;
+        color: #888;
+        border-top: 1px dashed #ccc;
+        padding-top: 5px;
+        margin-top: 5px;
     }
 </style>
 """, unsafe_allow_html=True)
 
 # --- 4. FUNGSI GENERATE GAMBAR (VIA POLLINATIONS - GRATIS & NO LIMIT) ---
 def generate_image_google(api_key, image_prompt):
-    # Kita pakai jalur alternatif yang 100% Gratis dan Stabil
+    # Kita pakai Pollinations.ai karena lebih stabil untuk umum
     clean_prompt = image_prompt.replace(" ", "%20")
-    # Style agar gambarnya cocok buat anak SD
-    style_suffix = "cartoon%20vector%20illustration%20educational%20white%20background"
+    # Style kartun edukasi sederhana
+    style_suffix = "cartoon%20vector%20simple%20educational%20white%20background"
     
     url = f"https://pollinations.ai/p/{clean_prompt}%20{style_suffix}?width=800&height=800&seed=42&nologo=true"
     
     try:
-        response = requests.get(url, timeout=10)
+        # Timeout ditambah sedikit agar tidak mudah gagal
+        response = requests.get(url, timeout=15)
         if response.status_code == 200:
             return BytesIO(response.content)
         else:
@@ -190,7 +228,7 @@ def create_docx(data_soal, tipe, mapel, kelas, list_request):
 
 # --- 6. LOGIKA AI ---
 def generate_soal_multi_granular(api_key, tipe_soal, kelas, mapel, list_request):
-    # Menggunakan Gemini 1.5 Flash (Lebih Aman Kuota)
+    # Menggunakan Gemini 2.0 Flash Exp (Terdeteksi di akun Anda)
     url_text = f"https://generativelanguage.googleapis.com/v1beta/models/{TEXT_MODEL}:generateContent?key={api_key}"
     headers = {'Content-Type': 'application/json'}
     
@@ -226,10 +264,10 @@ def generate_soal_multi_granular(api_key, tipe_soal, kelas, mapel, list_request)
         
         # JIKA KUOTA HABIS (429)
         if response.status_code == 429:
-            return None, "⏳ Kuota AI sedang sibuk/habis. Mohon tunggu 1 menit lalu coba lagi."
+            return None, "⏳ Kuota AI sedang sibuk/habis. Mohon tunggu 1-2 menit lalu coba lagi."
             
         if response.status_code != 200: 
-            return None, f"Error Text API: {response.text}"
+            return None, f"Error Text API ({response.status_code}): {response.text}"
         
         teks = response.json()['candidates'][0]['content']['parts'][0]['text']
         clean_json = teks.replace("```json", "").replace("```", "").strip()
@@ -262,6 +300,18 @@ with st.sidebar:
     
     if "GOOGLE_API_KEY" in st.secrets: api_key = st.secrets["GOOGLE_API_KEY"]
     else: api_key = st.text_input("🔑 API KEY", type="password")
+
+    with st.expander("🕵️ Cek Fitur"):
+        if st.button("Cek Imagen"):
+            if not api_key: st.error("No Key")
+            else:
+                try:
+                    res = requests.get(f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}")
+                    if res.status_code == 200:
+                        found = any('image' in m['name'] for m in res.json().get('models', []))
+                        if found: st.success("✅ Imagen Aktif!")
+                        else: st.warning("❌ Tidak ada Imagen")
+                except: pass
 
     st.markdown("---") 
     
