@@ -9,15 +9,15 @@ import os
 
 # --- 1. KONFIGURASI HALAMAN ---
 st.set_page_config(
-    page_title="Akademi Pelajar - Generator Soal",
-    page_icon="🎓",
+    page_title="Generator Soal SD",
+    page_icon="📚",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 MODEL_NAME = "gemini-2.5-flash"
 
-# --- 2. DATABASE MATERI (SAMA SEPERTI SEBELUMNYA) ---
+# --- 2. DATABASE MATERI ---
 DATABASE_MATERI = {
     "1 SD": {
         "Matematika": ["Bilangan sampai 10", "Penjumlahan & Pengurangan", "Bentuk Bangun Datar", "Mengukur Panjang Benda", "Mengenal Waktu"],
@@ -57,96 +57,60 @@ DATABASE_MATERI = {
     }
 }
 
-# --- 3. STYLE CSS (ELEGANT CHIC VERSION) ---
+# --- 3. STYLE CSS (CLEAN & BOLD INPUT) ---
 st.markdown("""
 <style>
-    /* Import Font: Playfair Display (Judul) & Poppins (Body) */
-    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Poppins:wght@400;600;700&display=swap');
+    /* Import Font: League Spartan (Judul) & Poppins (Body) */
+    @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@500;700&family=Poppins:wght@400;600;700&display=swap');
     
-    /* 1. Judul Utama (Elegan) */
+    /* 1. Sidebar Background: Biru Tipis (Soft Blue) */
+    [data-testid="stSidebar"] {
+        background-color: #e6f3ff; /* Biru sangat muda */
+        border-right: 1px solid #d1e5f0;
+    }
+    
+    /* 2. Judul Utama (League Spartan) */
     h1 { 
-        font-family: 'Playfair Display', serif !important; 
+        font-family: 'League Spartan', sans-serif !important; 
         font-weight: 700; 
         color: #1a1a1a; 
-        font-size: 3rem !important;
+        font-size: 28px !important; /* Diperkecil sesuai request (compact header) */
         margin-bottom: 0px !important;
     }
     
-    /* 2. Subtitle */
+    /* Subtitle */
     .subtitle { 
         font-family: 'Poppins', sans-serif !important; 
-        font-size: 16px; 
+        font-size: 14px; 
         color: #666666; 
-        letter-spacing: 1px;
-        margin-top: -10px; 
-        margin-bottom: 30px; 
-        border-bottom: 2px solid #5fabf2; /* Garis aksen kecil */
-        display: inline-block;
-        padding-bottom: 5px;
+        margin-top: -5px; 
+        margin-bottom: 25px; 
     }
     
-    /* 3. Sidebar Background (Soft Royal Gradient) */
-    [data-testid="stSidebar"] {
-        background-image: linear-gradient(180deg, #E3F2FD 0%, #FFFFFF 100%);
-        border-right: 1px solid #e0e0e0;
-    }
-    
-    /* 4. CUSTOM LABEL INPUT (Request Anda: Besar & Bold) */
-    .stSelectbox label, .stTextInput label, .stNumberInput label {
+    /* 3. INPUT LABEL: BOLD, HITAM, UPPERCASE (Sesuai request) */
+    .stSelectbox label, .stTextInput label, .stNumberInput label, .stRadio label {
         font-family: 'Poppins', sans-serif !important;
-        font-size: 16px !important;
-        font-weight: 700 !important; /* BOLD */
-        color: #2c3e50 !important; /* Warna Biru Gelap Tua */
-        text-transform: uppercase; /* Opsional: Biar lebih tegas */
+        font-size: 13px !important;
+        font-weight: 800 !important; /* Sangat Tebal */
+        color: #000000 !important; /* Hitam Pekat */
+        text-transform: uppercase; /* Huruf Kapital Semua */
         letter-spacing: 0.5px;
     }
     
-    /* Label untuk Radio Button juga */
-    .stRadio label {
-        font-family: 'Poppins', sans-serif !important;
-        font-size: 14px !important;
-        font-weight: 600 !important;
-    }
-
-    /* 5. Tombol Utama (Chic Gradient) */
+    /* 4. Tombol Utama */
     .stButton>button { 
         width: 100%; 
-        border-radius: 12px; 
-        height: 3.5em; 
+        border-radius: 8px; 
+        height: 3em; 
         font-family: 'Poppins', sans-serif; 
         font-weight: 600; 
-        background: linear-gradient(45deg, #2196F3, #21CBF3); /* Gradasi Biru Cerah */
+        background-color: #2196F3;
         color: white;
-        border: none;
-        box-shadow: 0 4px 15px rgba(33, 150, 243, 0.3); /* Bayangan Glow */
-        transition: all 0.3s ease;
-    }
-    .stButton>button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(33, 150, 243, 0.4);
     }
     
-    /* 6. Card Styling (Kotak Putih dengan Bayangan Halus) */
-    div[data-testid="stExpander"], div[data-testid="stVerticalBlock"] > div {
-        background-color: white;
-        border-radius: 10px;
-    }
-    
-    /* Container Konfigurasi Soal */
-    .config-card {
-        background: #ffffff;
-        padding: 20px;
-        border-radius: 15px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05); /* Soft Shadow */
-        border: 1px solid #f0f0f0;
-        margin-bottom: 15px;
-    }
-    
-    /* Logo Positioning */
-    section[data-testid="stSidebar"] > div > div:first-child {
-        text-align: center;
-        padding-top: 2rem;
-        padding-bottom: 1rem;
+    /* 5. Membersihkan Tampilan Sidebar (Hapus kotak putih pengganggu) */
+    div[data-testid="stSidebar"] div[data-testid="stVerticalBlock"] {
+        gap: 1rem;
     }
     
     /* Footer Info */
@@ -154,11 +118,10 @@ st.markdown("""
         font-family: 'Poppins', sans-serif;
         font-size: 12px;
         color: #888;
-        border-top: 1px solid #eee;
-        padding-top: 10px;
-        margin-top: 10px;
+        border-top: 1px dashed #ccc;
+        padding-top: 5px;
+        margin-top: 5px;
     }
-
 </style>
 """, unsafe_allow_html=True)
 
@@ -193,7 +156,7 @@ def create_docx(data_soal, tipe, mapel, kelas, list_request):
         doc.add_paragraph()
 
     doc.add_page_break()
-    doc.add_heading('B. KUNCI JAWABAN (Pegangan Guru)', level=1)
+    doc.add_heading('B. KUNCI JAWABAN', level=1)
     
     for idx, item in enumerate(data_soal):
         p = doc.add_paragraph()
@@ -252,82 +215,69 @@ def generate_soal_multi_granular(api_key, tipe_soal, kelas, mapel, list_request)
 if 'hasil_soal' not in st.session_state: st.session_state.hasil_soal = None
 if 'tipe_aktif' not in st.session_state: st.session_state.tipe_aktif = None
 
-# --- 7. SIDEBAR (PANEL GURU + LOGO) ---
+# --- 7. SIDEBAR (PANEL GURU) ---
 with st.sidebar:
     
-    # === LOGO ===
+    # === PERBAIKAN LOGO (CLEAN, NO CARD) ===
     if os.path.exists("logo.png"):
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
+        # Gunakan kolom agar center
+        c1, c2, c3 = st.columns([1, 2, 1])
+        with c2:
             st.image("logo.png", width=100)
+    else:
+        st.caption("Admin: Upload logo.png")
     
-    st.markdown("<h3 style='text-align: center; font-family: Poppins;'>Panel Guru</h3>", unsafe_allow_html=True)
+    # Tulisan Panel Guru (Font League Spartan, Center)
+    st.markdown("<h3 style='text-align: center; font-family: League Spartan; margin-top:0;'>PANEL GURU</h3>", unsafe_allow_html=True)
     
+    # API KEY INPUT
     if "GOOGLE_API_KEY" in st.secrets: api_key = st.secrets["GOOGLE_API_KEY"]
-    else: api_key = st.text_input("🔑 API Key", type="password")
+    else: api_key = st.text_input("🔑 API KEY", type="password")
 
-    # --- DETEKTIF MODEL ---
-    with st.expander("🕵️ Cek Fitur Akun (Admin)"):
-        if st.button("Cek Apakah Bisa Gambar?"):
-            if not api_key: st.error("API Key kosong.")
+    # DETEKTIF MODEL (HIDDEN EXPANDER)
+    with st.expander("🕵️ Cek Fitur"):
+        if st.button("Cek Imagen"):
+            if not api_key: st.error("No Key")
             else:
                 try:
-                    check_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-                    response = requests.get(check_url)
-                    if response.status_code == 200:
-                        data = response.json()
-                        models = data.get('models', [])
-                        found = False
-                        st.write("Hasil Scan Model:")
-                        for m in models:
-                            nama_model = m.get('name', '')
-                            if 'image' in nama_model.lower() or 'vision' in nama_model.lower():
-                                st.success(f"✅ DITEMUKAN: {nama_model}")
-                                found = True
-                        if not found: st.warning("❌ Belum ada model gambar.")
-                    else: st.error(f"Gagal koneksi: {response.status_code}")
-                except Exception as e: st.error(f"Error: {e}")
-    # -----------------------
+                    res = requests.get(f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}")
+                    if res.status_code == 200:
+                        found = any('image' in m['name'] for m in res.json().get('models', []))
+                        if found: st.success("✅ Imagen Aktif!")
+                        else: st.warning("❌ Tidak ada Imagen")
+                except: pass
 
+    st.markdown("---") # Garis Pembatas Tipis
+    
+    # --- INPUT UTAMA (Label otomatis jadi BOLD krn CSS di atas) ---
+    kelas = st.selectbox("KELAS", [f"{i} SD" for i in range(1, 7)], index=5)
+    
+    mapel = st.selectbox("MATA PELAJARAN", ["Matematika", "IPA", "Bahasa Indonesia", "Bahasa Inggris"])
+    
     st.divider()
     
-    # -- INPUT UTAMA --
-    kelas = st.selectbox("Kelas", [f"{i} SD" for i in range(1, 7)], index=5)
-    
-    # REVISI LABEL: "Mapel" -> "Mata Pelajaran"
-    mapel = st.selectbox("Mata Pelajaran", ["Matematika", "IPA", "Bahasa Indonesia", "Bahasa Inggris"])
-    
-    st.divider()
-    
-    jml_soal = st.selectbox("Jumlah Soal", [1, 2, 3])
+    jml_soal = st.selectbox("JUMLAH SOAL", [1, 2, 3])
     
     list_request_user = [] 
     
-    st.markdown("---")
-    st.markdown("<h4 style='font-family:Poppins; font-size:16px;'>📝 Konfigurasi Per Soal</h4>", unsafe_allow_html=True)
+    # Header Kecil
+    st.markdown("<br><div style='font-weight:bold; font-size:14px; border-bottom:1px solid #ccc; margin-bottom:10px;'>KONFIGURASI PER SOAL</div>", unsafe_allow_html=True)
     
     for i in range(jml_soal):
-        # MENGGUNAKAN STYLE CARD KHUSUS
-        st.markdown(f"""
-        <div class="config-card">
-            <div style="font-weight:bold; margin-bottom:5px; color:#555;">Soal Nomor {i+1}</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f"**# Soal {i+1}**")
         
         daftar_materi = DATABASE_MATERI.get(kelas, {}).get(mapel, [])
-        
-        # REVISI LABEL: "Materi Soal" dan "Level Soal"
         if daftar_materi: 
-            topik_selected = st.selectbox(f"Materi Soal {i+1}", daftar_materi, key=f"topik_{i}")
+            topik_selected = st.selectbox(f"MATERI SOAL {i+1}", daftar_materi, key=f"topik_{i}")
         else: 
-            topik_selected = st.text_input(f"Materi Soal {i+1} (Manual)", key=f"topik_{i}")
+            topik_selected = st.text_input(f"MATERI SOAL {i+1} (Manual)", key=f"topik_{i}")
             
-        level_selected = st.selectbox(f"Level Soal {i+1}", ["Mudah", "Sedang", "Sulit (HOTS)"], key=f"lvl_{i}")
+        level_selected = st.selectbox(f"LEVEL SOAL {i+1}", ["Mudah", "Sedang", "Sulit (HOTS)"], key=f"lvl_{i}")
         
         list_request_user.append({"topik": topik_selected, "level": level_selected})
-        st.markdown("<br>", unsafe_allow_html=True) # Spasi
+        st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True) # Spasi
 
-    if st.button("🗑️ Reset Konfigurasi"):
+    if st.button("🗑️ Reset"):
         st.session_state.hasil_soal = None
         st.rerun()
 
@@ -357,7 +307,7 @@ with tab_pg:
         for idx, item in enumerate(data):
             info_req = list_request_user[idx]
             with st.container(border=True):
-                st.markdown(f"**{idx+1}. {item['soal']}**") # Markdown agar bold lebih tegas
+                st.write(f"**{idx+1}. {item['soal']}**")
                 ans = st.radio(f"Jawab {idx+1}", item['opsi'], key=f"rad_{idx}", index=None)
                 st.markdown(f"<div class='footer-info'>Materi: {info_req['topik']} | Kesulitan: {info_req['level']}</div>", unsafe_allow_html=True)
                 with st.expander("Kunci Jawaban"):
