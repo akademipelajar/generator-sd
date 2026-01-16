@@ -1,9 +1,11 @@
 import streamlit as st
 import json
 import requests
+import time
+import base64
 from io import BytesIO
 from docx import Document
-from docx.shared import Pt, RGBColor
+from docx.shared import Pt, RGBColor, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 import os 
 
@@ -15,7 +17,10 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-MODEL_NAME = "gemini-2.5-flash"
+# --- KONFIGURASI MODEL ---
+TEXT_MODEL = "gemini-2.5-flash"
+# Gunakan model gambar yang muncul di hasil cek Anda kemarin
+IMAGE_MODEL = "imagen-3.0-generate-001" 
 
 # --- 2. DATABASE MATERI ---
 DATABASE_MATERI = {
@@ -57,13 +62,11 @@ DATABASE_MATERI = {
     }
 }
 
-# --- 3. STYLE CSS (FIXED SIDEBAR + CLEAN UI) ---
+# --- 3. STYLE CSS ---
 st.markdown("""
 <style>
-    /* Import Font: League Spartan & Poppins */
     @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@500;700&family=Poppins:wght@400;600;700&display=swap');
     
-    /* 1. Sidebar Background & FIXED WIDTH */
     [data-testid="stSidebar"] {
         background-color: #e6f3ff; 
         border-right: 1px solid #d1e5f0;
@@ -71,78 +74,78 @@ st.markdown("""
         max-width: 320px !important; 
     }
     
-    /* 2. PADDING MAIN CONTENT */
-    .block-container {
-        padding: 20px !important;
-    }
+    .block-container { padding: 20px !important; }
 
-    /* 3. Judul Utama */
     h1 { 
         font-family: 'League Spartan', sans-serif !important; 
-        font-weight: 700; 
-        color: #1a1a1a; 
-        font-size: 30px !important;
-        margin-bottom: 5px !important;
+        font-weight: 700; color: #1a1a1a; font-size: 30px !important; margin-bottom: 5px !important;
     }
     
-    /* Subtitle */
     .subtitle { 
-        font-family: 'Poppins', sans-serif !important; 
-        font-size: 18px;
-        color: #666666; 
-        margin-top: 0px; 
-        margin-bottom: 25px; 
+        font-family: 'Poppins', sans-serif !important; font-size: 18px; color: #666666; margin-top: 0px; margin-bottom: 25px; 
     }
     
-    /* 4. INPUT LABEL (Sidebar): BOLD & UPPERCASE */
-    .stSelectbox label, .stTextInput label, .stNumberInput label {
+    .stSelectbox label, .stTextInput label, .stNumberInput label, .stRadio label, .stCheckbox label {
         font-family: 'Poppins', sans-serif !important;
+        color: #000000 !important;
+    }
+    
+    /* Label Input Sidebar Besar & Bold */
+    .stSelectbox label, .stTextInput label {
         font-size: 13px !important;
         font-weight: 800 !important;
-        color: #000000 !important;
         text-transform: uppercase;
         letter-spacing: 0.5px;
     }
-    
-    /* 5. LABEL RADIO BUTTON (Opsi Jawaban): STANDARD CASE */
-    /* Penting: text-transform none agar tidak dipaksa kapital oleh CSS lain */
+
+    /* Opsi Jawaban Normal */
     .stRadio label {
-        font-family: 'Poppins', sans-serif !important;
         font-size: 15px !important;
-        font-weight: 400 !important; 
-        color: #333333 !important;
-        text-transform: none !important; 
+        font-weight: 400 !important;
+        text-transform: none !important;
     }
     
-    /* 6. Tombol Utama */
     .stButton>button { 
-        width: 100%; 
-        border-radius: 8px; 
-        height: 3em; 
-        font-family: 'Poppins', sans-serif; 
-        font-weight: 600; 
-        background-color: #2196F3;
-        color: white;
+        width: 100%; border-radius: 8px; height: 3em; 
+        font-family: 'Poppins', sans-serif; font-weight: 600; 
+        background-color: #2196F3; color: white;
     }
     
-    /* 7. Clean Sidebar */
-    div[data-testid="stSidebar"] div[data-testid="stVerticalBlock"] {
-        gap: 0.5rem;
-    }
-    
-    /* Footer Info di Kartu Soal */
     .footer-info {
-        font-family: 'Poppins', sans-serif;
-        font-size: 12px;
-        color: #888;
-        border-top: 1px dashed #ccc;
-        padding-top: 5px;
-        margin-top: 5px;
+        font-family: 'Poppins', sans-serif; font-size: 12px; color: #888;
+        border-top: 1px dashed #ccc; padding-top: 5px; margin-top: 5px;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 4. FUNGSI GENERATE WORD (DOCX) ---
+# --- 4. FUNGSI GENERATE GAMBAR (IMAGEN) ---
+def generate_image_google(api_key, image_prompt):
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{IMAGE_MODEL}:predict?key={api_key}"
+    headers = {'Content-Type': 'application/json'}
+    
+    # Prompt style kartun edukasi agar ramah anak
+    full_prompt = f"Educational illustration for elementary school exam, vector art style, white background, clear lines: {image_prompt}"
+    
+    payload = {
+        "instances": [{"prompt": full_prompt}],
+        "parameters": {"sampleCount": 1}
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, json=payload)
+        if response.status_code != 200:
+            return None
+        
+        result = response.json()
+        # Ambil data base64
+        b64_data = result['predictions'][0]['bytesBase64Encoded']
+        # Convert ke BytesIO (agar bisa dibaca Streamlit & Word)
+        image_bytes = base64.b64decode(b64_data)
+        return BytesIO(image_bytes)
+    except:
+        return None
+
+# --- 5. FUNGSI GENERATE WORD (DOCX) ---
 def create_docx(data_soal, tipe, mapel, kelas, list_request):
     doc = Document()
     style = doc.styles['Normal']
@@ -160,6 +163,13 @@ def create_docx(data_soal, tipe, mapel, kelas, list_request):
         req_data = list_request[idx]
         p = doc.add_paragraph()
         p.add_run(f"{idx+1}. {item['soal']}").bold = True 
+        
+        # --- MASUKKAN GAMBAR KE WORD JIKA ADA ---
+        if item.get('image_data'):
+            # Resize image agar pas di kertas (misal lebar 2.5 inch)
+            doc.add_picture(item['image_data'], width=Inches(2.5))
+            # Reset pointer agar gambar bisa dipakai lagi (jika perlu)
+            item['image_data'].seek(0)
         
         if tipe == "Pilihan Ganda":
             for op in item['opsi']: doc.add_paragraph(f"    {op}")
@@ -191,61 +201,79 @@ def create_docx(data_soal, tipe, mapel, kelas, list_request):
     bio.seek(0)
     return bio
 
-# --- 5. LOGIKA AI ---
+# --- 6. LOGIKA AI UTAMA (TEXT + IMAGE COORDINATOR) ---
 def generate_soal_multi_granular(api_key, tipe_soal, kelas, mapel, list_request):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={api_key}"
+    # 1. TEXT GENERATION
+    url_text = f"https://generativelanguage.googleapis.com/v1beta/models/{TEXT_MODEL}:generateContent?key={api_key}"
     headers = {'Content-Type': 'application/json'}
     
     req_str = ""
     for i, req in enumerate(list_request):
-        req_str += f"- Soal No {i+1}: Topik '{req['topik']}' dengan Level '{req['level']}'\n"
+        # Cek apakah user minta gambar untuk nomor ini?
+        pakai_gambar = "YA (Buatkan deskripsi visual)" if req['use_image'] else "TIDAK (Hanya teks)"
+        req_str += f"- Soal No {i+1}: Topik '{req['topik']}', Level '{req['level']}', Butuh Gambar? {pakai_gambar}\n"
 
+    # Struktur JSON dinamis
+    json_fields = '"no":1,"soal":"...","pembahasan":"..."'
     if tipe_soal == "Pilihan Ganda":
-        json_structure = """[{"no":1,"soal":"...","opsi":["A. Teks jawaban","B. Teks jawaban","C. Teks jawaban","D. Teks jawaban"],"kunci_index":0,"pembahasan":"..."}]"""
+        json_fields += ',"opsi":["A. ...","B. ...","C. ...","D. ..."],"kunci_index":0'
     else:
-        json_structure = """[{"no":1,"soal":"...","poin_kunci":["..."],"pembahasan":"..."}]"""
+        json_fields += ',"poin_kunci":["..."]'
+        
+    # Tambahkan field 'image_prompt'
+    json_fields += ',"image_prompt": "Deskripsi visual dalam bahasa inggris (jika butuh gambar), atau null (jika tidak)"'
 
     prompt = f"""
     Bertindaklah sebagai Guru SD profesional. Buatkan {len(list_request)} soal {tipe_soal} untuk siswa {kelas} SD Kurikulum Merdeka.
     Mata Pelajaran: {mapel}
     
-    Instruksi Spesifik Per Soal:
+    Instruksi Per Soal:
     {req_str}
     
-    ATURAN SANGAT PENTING:
-    1. JANGAN PERNAH membuat soal yang merujuk pada gambar visual. Semua soal harus DESKRIPTIF (Soal Cerita).
-    2. HINDARI format LaTeX ($). Gunakan simbol keyboard standar (1/2, +, :, x).
-    3. PENULISAN OPSI JAWABAN: Wajib menggunakan 'Sentence case' (Huruf kapital hanya di awal kalimat). 
-       DILARANG KERAS menggunakan HURUF KAPITAL SEMUA (ALL CAPS) pada opsi jawaban.
-       Salah: "A. KITCHEN"
-       Benar: "A. Kitchen"
-    4. JANGAN sertakan nomor soal atau tanda bintang (**) di dalam teks json 'soal'.
+    ATURAN KHUSUS:
+    1. Jika diminta 'Butuh Gambar: YA', buatlah soal yang merujuk pada gambar tersebut (contoh: "Perhatikan gambar di bawah..."). 
+       Lalu isi field 'image_prompt' dengan deskripsi gambar yang detail dalam Bahasa Inggris untuk generator gambar.
+    2. Jika 'Butuh Gambar: TIDAK', buat soal cerita deskriptif biasa. Isi 'image_prompt' dengan null.
+    3. Pilihan Ganda (PG) jangan ALL CAPS. Gunakan Sentence case.
+    4. Hindari LaTeX ($).
     
-    Output WAJIB JSON Array Murni:
-    {json_structure}
+    Output JSON Array Murni:
+    [ {{ {json_fields} }} ]
     """
     
     try:
-        response = requests.post(url, headers=headers, json={"contents": [{"parts": [{"text": prompt}]}]})
-        if response.status_code != 200: return None, f"Error API: {response.text}"
-        teks = response.json()['candidates'][0]['content']['parts'][0]['text']
-        teks_bersih = teks.replace("```json", "").replace("```", "").strip()
-        return json.loads(teks_bersih), None
+        # Step A: Generate Text Soal
+        response = requests.post(url_text, headers=headers, json={"contents": [{"parts": [{"text": prompt}]}]})
+        if response.status_code != 200: return None, f"Error Text API: {response.text}"
+        
+        text_raw = response.json()['candidates'][0]['content']['parts'][0]['text']
+        clean_json = text_raw.replace("```json", "").replace("```", "").strip()
+        data_soal = json.loads(clean_json)
+        
+        # Step B: Generate Image (Jika ada request)
+        for item in data_soal:
+            item['image_data'] = None # Default kosong
+            
+            # Cek apakah AI memberikan prompt gambar
+            if item.get('image_prompt'):
+                # Panggil Fungsi Gambar
+                img_bytes = generate_image_google(api_key, item['image_prompt'])
+                if img_bytes:
+                    item['image_data'] = img_bytes
+                
+        return data_soal, None
+
     except Exception as e: return None, str(e)
 
-# --- 6. SESSION STATE ---
+# --- 7. SESSION STATE ---
 if 'hasil_soal' not in st.session_state: st.session_state.hasil_soal = None
 if 'tipe_aktif' not in st.session_state: st.session_state.tipe_aktif = None
 
-# --- 7. SIDEBAR ---
+# --- 8. SIDEBAR ---
 with st.sidebar:
-    
     if os.path.exists("logo.png"):
         c1, c2, c3 = st.columns([1, 2, 1])
-        with c2:
-            st.image("logo.png", width=100)
-    else:
-        st.caption("Admin: Upload logo.png")
+        with c2: st.image("logo.png", width=100)
     
     st.markdown("<h3 style='text-align: center; font-family: League Spartan; font-size:18px; margin-top:0;'>KONFIGURASI UTAMA<br>PANEL GURU</h3>", unsafe_allow_html=True)
     
@@ -288,14 +316,21 @@ with st.sidebar:
             
         level_selected = st.selectbox(f"LEVEL SOAL {i+1}", ["Mudah", "Sedang", "Sulit (HOTS)"], key=f"lvl_{i}")
         
-        list_request_user.append({"topik": topik_selected, "level": level_selected})
+        # --- NEW: CHECKBOX GAMBAR ---
+        use_image = st.checkbox(f"Pakai Gambar?", key=f"img_{i}", help="Centang jika ingin soal ini memiliki ilustrasi gambar")
+        
+        list_request_user.append({
+            "topik": topik_selected, 
+            "level": level_selected,
+            "use_image": use_image
+        })
         st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
 
     if st.button("🗑️ Reset"):
         st.session_state.hasil_soal = None
         st.rerun()
 
-# --- 8. UI UTAMA ---
+# --- 9. UI UTAMA ---
 st.markdown("<h1>Generator Soal Sekolah Dasar (SD)</h1>", unsafe_allow_html=True)
 st.markdown('<div class="subtitle">Berdasarkan Kurikulum Merdeka</div>', unsafe_allow_html=True)
 
@@ -306,7 +341,7 @@ with tab_pg:
     if st.button("🚀 Generate Soal PG", type="primary"):
         if not api_key: st.error("API Key belum diisi")
         else:
-            with st.spinner("Sedang meracik soal deskriptif..."):
+            with st.spinner("Sedang meracik soal & menggambar ilustrasi (mohon tunggu)..."):
                 res, err = generate_soal_multi_granular(api_key, "Pilihan Ganda", kelas, mapel, list_request_user)
                 if res:
                     st.session_state.hasil_soal = res
@@ -321,6 +356,10 @@ with tab_pg:
         for idx, item in enumerate(data):
             info_req = list_request_user[idx]
             with st.container(border=True):
+                # TAMPILKAN GAMBAR JIKA ADA
+                if item.get('image_data'):
+                    st.image(item['image_data'], caption="Ilustrasi Soal", width=300)
+                
                 st.write(f"{idx+1}. {item['soal']}") 
                 
                 ans = st.radio(
@@ -345,7 +384,7 @@ with tab_uraian:
     if st.button("🚀 Generate Soal Uraian", type="primary"):
         if not api_key: st.error("API Key kosong")
         else:
-            with st.spinner("Sedang membuat soal uraian..."):
+            with st.spinner("Sedang membuat soal & gambar..."):
                 res, err = generate_soal_multi_granular(api_key, "Uraian", kelas, mapel, list_request_user)
                 if res:
                     st.session_state.hasil_soal = res
@@ -359,13 +398,17 @@ with tab_uraian:
         for idx, item in enumerate(data):
             info_req = list_request_user[idx]
             with st.container(border=True):
+                # TAMPILKAN GAMBAR JIKA ADA
+                if item.get('image_data'):
+                    st.image(item['image_data'], caption="Ilustrasi Soal", width=300)
+
                 st.write(f"**Soal {idx+1}:** {item['soal']}")
                 st.markdown(f"<div class='footer-info'>Materi: {info_req['topik']} | Kesulitan: {info_req['level']}</div>", unsafe_allow_html=True)
                 st.text_area("Jawab:", height=80, key=f"essay_{idx}")
                 with st.expander("Lihat Kunci Guru"):
                     st.write(item['pembahasan'])
 
-# --- 9. FOOTER COPYRIGHT (FIXED BOTTOM CENTER) ---
+# --- 10. FOOTER COPYRIGHT (UPDATED) ---
 st.markdown("""
 <div style='text-align: center; font-size: 12px; font-weight: bold; margin-top: 20px; padding-top: 10px; border-top: 1px solid #e0e0e0; color: #555; font-family: Poppins;'>
     <p style='margin: 5px 0;'>Aplikasi Generator Soal ini Milik Bimbingan Belajar Digital "Akademi Pelajar"</p>
