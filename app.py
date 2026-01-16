@@ -57,16 +57,17 @@ DATABASE_MATERI = {
     }
 }
 
-# --- 3. STYLE CSS (REVISI CSS) ---
+# --- 3. STYLE CSS (FIXED SIDEBAR WIDTH) ---
 st.markdown("""
 <style>
-    /* Import Font */
     @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@500;700&family=Poppins:wght@400;600;700&display=swap');
     
-    /* 1. Sidebar Background */
+    /* 1. Sidebar Background & FIXED WIDTH */
     [data-testid="stSidebar"] {
         background-color: #e6f3ff; 
         border-right: 1px solid #d1e5f0;
+        min-width: 320px !important; /* Kunci Lebar Minimal */
+        max-width: 320px !important; /* Kunci Lebar Maksimal */
     }
     
     /* 2. Judul Utama */
@@ -87,8 +88,8 @@ st.markdown("""
         margin-bottom: 25px; 
     }
     
-    /* 3. INPUT LABEL (Sidebar): Tetap BOLD & UPPERCASE */
-    .stSelectbox label, .stTextInput label, .stNumberInput label {
+    /* 3. INPUT LABEL */
+    .stSelectbox label, .stTextInput label, .stNumberInput label, .stRadio label {
         font-family: 'Poppins', sans-serif !important;
         font-size: 13px !important;
         font-weight: 800 !important;
@@ -97,16 +98,7 @@ st.markdown("""
         letter-spacing: 0.5px;
     }
     
-    /* 4. LABEL RADIO BUTTON (Opsi Jawaban): STANDARD CASE (Normal) */
-    .stRadio label {
-        font-family: 'Poppins', sans-serif !important;
-        font-size: 15px !important;
-        font-weight: 400 !important; /* Normal weight */
-        color: #333333 !important;
-        text-transform: none !important; /* Jangan dikapital semua */
-    }
-    
-    /* 5. Tombol Utama */
+    /* 4. Tombol Utama */
     .stButton>button { 
         width: 100%; 
         border-radius: 8px; 
@@ -117,12 +109,11 @@ st.markdown("""
         color: white;
     }
     
-    /* 6. Clean Sidebar */
+    /* 5. Clean Sidebar */
     div[data-testid="stSidebar"] div[data-testid="stVerticalBlock"] {
         gap: 0.5rem;
     }
     
-    /* Footer Info di Kartu Soal */
     .footer-info {
         font-family: 'Poppins', sans-serif;
         font-size: 12px;
@@ -151,7 +142,6 @@ def create_docx(data_soal, tipe, mapel, kelas, list_request):
     for idx, item in enumerate(data_soal):
         req_data = list_request[idx]
         p = doc.add_paragraph()
-        # Perbaikan: Hapus bold pada nomor soal di word jika diinginkan, tapi standardnya bold
         p.add_run(f"{idx+1}. {item['soal']}").bold = True 
         
         if tipe == "Pilihan Ganda":
@@ -194,7 +184,6 @@ def generate_soal_multi_granular(api_key, tipe_soal, kelas, mapel, list_request)
         req_str += f"- Soal No {i+1}: Topik '{req['topik']}' dengan Level '{req['level']}'\n"
 
     if tipe_soal == "Pilihan Ganda":
-        # Instruksi diperjelas: Format opsi standar
         json_structure = """[{"no":1,"soal":"...","opsi":["A. Teks jawaban","B. Teks jawaban","C. Teks jawaban","D. Teks jawaban"],"kunci_index":0,"pembahasan":"..."}]"""
     else:
         json_structure = """[{"no":1,"soal":"...","poin_kunci":["..."],"pembahasan":"..."}]"""
@@ -209,7 +198,7 @@ def generate_soal_multi_granular(api_key, tipe_soal, kelas, mapel, list_request)
     ATURAN SANGAT PENTING:
     1. JANGAN PERNAH membuat soal yang merujuk pada gambar visual. Semua soal harus DESKRIPTIF (Soal Cerita).
     2. HINDARI format LaTeX ($). Gunakan simbol keyboard standar (1/2, +, :, x).
-    3. PENULISAN: Gunakan Ejaan Yang Disempurnakan (EYD). Awal kalimat huruf besar, sisanya kecil kecuali nama diri. JANGAN HURUF KAPITAL SEMUA.
+    3. PENULISAN: Gunakan Ejaan Yang Disempurnakan (EYD). Awal kalimat huruf besar, sisanya kecil kecuali nama diri.
     4. JANGAN sertakan nomor soal atau tanda bintang (**) di dalam teks json 'soal'.
     
     Output WAJIB JSON Array Murni:
@@ -231,7 +220,10 @@ if 'tipe_aktif' not in st.session_state: st.session_state.tipe_aktif = None
 # --- 7. SIDEBAR ---
 with st.sidebar:
     
+    # === PERBAIKAN POSISI LOGO ===
     if os.path.exists("logo.png"):
+        # Kita pakai kolom [1, 2, 1] agar logo ada di tengah dengan presisi
+        # Karena lebar sidebar sudah dikunci (320px), posisi ini akan stabil
         c1, c2, c3 = st.columns([1, 2, 1])
         with c2:
             st.image("logo.png", width=100)
@@ -312,16 +304,14 @@ with tab_pg:
         for idx, item in enumerate(data):
             info_req = list_request_user[idx]
             with st.container(border=True):
-                # REVISI 1: Menghapus tanda ** di python, pakai normal text saja
                 st.write(f"{idx+1}. {item['soal']}") 
                 
-                # REVISI 2: Menghapus label "Jawab 1" dengan label_visibility="collapsed"
                 ans = st.radio(
-                    f"Label_hidden_{idx}", # Label tetap butuh string unik, tapi tidak ditampilkan
+                    f"Label_hidden_{idx}",
                     item['opsi'], 
                     key=f"rad_{idx}", 
                     index=None,
-                    label_visibility="collapsed" # <--- INI KUNCINYA
+                    label_visibility="collapsed"
                 )
                 
                 st.markdown(f"<div class='footer-info'>Materi: {info_req['topik']} | Kesulitan: {info_req['level']}</div>", unsafe_allow_html=True)
@@ -352,9 +342,7 @@ with tab_uraian:
         for idx, item in enumerate(data):
             info_req = list_request_user[idx]
             with st.container(border=True):
-                # REVISI 1: Teks normal tanpa bold markdown berlebih
                 st.write(f"**Soal {idx+1}:** {item['soal']}")
-                
                 st.markdown(f"<div class='footer-info'>Materi: {info_req['topik']} | Kesulitan: {info_req['level']}</div>", unsafe_allow_html=True)
                 st.text_area("Jawab:", height=80, key=f"essay_{idx}")
                 with st.expander("Lihat Kunci Guru"):
