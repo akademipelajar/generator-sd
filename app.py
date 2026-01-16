@@ -1,7 +1,6 @@
 import streamlit as st
 import json
 import requests
-import time
 import base64
 from io import BytesIO
 from docx import Document
@@ -19,7 +18,6 @@ st.set_page_config(
 
 # --- KONFIGURASI MODEL ---
 TEXT_MODEL = "gemini-2.5-flash"
-# Gunakan model gambar yang muncul di hasil cek Anda kemarin
 IMAGE_MODEL = "imagen-3.0-generate-001" 
 
 # --- 2. DATABASE MATERI ---
@@ -90,7 +88,6 @@ st.markdown("""
         color: #000000 !important;
     }
     
-    /* Label Input Sidebar Besar & Bold */
     .stSelectbox label, .stTextInput label {
         font-size: 13px !important;
         font-weight: 800 !important;
@@ -98,7 +95,6 @@ st.markdown("""
         letter-spacing: 0.5px;
     }
 
-    /* Opsi Jawaban Normal */
     .stRadio label {
         font-size: 15px !important;
         font-weight: 400 !important;
@@ -118,31 +114,41 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 4. FUNGSI GENERATE GAMBAR (IMAGEN) ---
+# --- 4. FUNGSI GENERATE GAMBAR (FRIENDLY WARNING) ---
 def generate_image_google(api_key, image_prompt):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{IMAGE_MODEL}:predict?key={api_key}"
     headers = {'Content-Type': 'application/json'}
     
-    # Prompt style kartun edukasi agar ramah anak
-    full_prompt = f"Educational illustration for elementary school exam, vector art style, white background, clear lines: {image_prompt}"
+    full_prompt = f"cartoon illustration for school, simple vector art, white background, educational safe content: {image_prompt}"
     
     payload = {
         "instances": [{"prompt": full_prompt}],
-        "parameters": {"sampleCount": 1}
+        "parameters": {"sampleCount": 1, "aspectRatio": "1:1"}
     }
     
     try:
         response = requests.post(url, headers=headers, json=payload)
+        
+        # JIKA ERROR HTTP (Misal 403/500)
         if response.status_code != 200:
+            st.warning("⚠️ Maaf gambar belum bisa di generate oleh system, bisa dicoba kembali nanti.")
             return None
         
         result = response.json()
-        # Ambil data base64
-        b64_data = result['predictions'][0]['bytesBase64Encoded']
-        # Convert ke BytesIO (agar bisa dibaca Streamlit & Word)
-        image_bytes = base64.b64decode(b64_data)
-        return BytesIO(image_bytes)
-    except:
+        
+        # JIKA SUKSES ADA GAMBAR
+        if 'predictions' in result and len(result['predictions']) > 0:
+            b64_data = result['predictions'][0]['bytesBase64Encoded']
+            image_bytes = base64.b64decode(b64_data)
+            return BytesIO(image_bytes)
+        else:
+            # JIKA SUKSES TAPI KOSONG (Safety Filter Block)
+            st.warning("⚠️ Maaf gambar belum bisa di generate oleh system, bisa dicoba kembali nanti.")
+            return None
+            
+    except Exception:
+        # JIKA ERROR KONEKSI DLL
+        st.warning("⚠️ Maaf gambar belum bisa di generate oleh system, bisa dicoba kembali nanti.")
         return None
 
 # --- 5. FUNGSI GENERATE WORD (DOCX) ---
@@ -164,12 +170,11 @@ def create_docx(data_soal, tipe, mapel, kelas, list_request):
         p = doc.add_paragraph()
         p.add_run(f"{idx+1}. {item['soal']}").bold = True 
         
-        # --- MASUKKAN GAMBAR KE WORD JIKA ADA ---
         if item.get('image_data'):
-            # Resize image agar pas di kertas (misal lebar 2.5 inch)
-            doc.add_picture(item['image_data'], width=Inches(2.5))
-            # Reset pointer agar gambar bisa dipakai lagi (jika perlu)
-            item['image_data'].seek(0)
+            try:
+                doc.add_picture(item['image_data'], width=Inches(2.0))
+                item['image_data'].seek(0)
+            except: pass
         
         if tipe == "Pilihan Ganda":
             for op in item['opsi']: doc.add_paragraph(f"    {op}")
@@ -201,27 +206,20 @@ def create_docx(data_soal, tipe, mapel, kelas, list_request):
     bio.seek(0)
     return bio
 
-# --- 6. LOGIKA AI UTAMA (TEXT + IMAGE COORDINATOR) ---
+# --- 6. LOGIKA AI ---
 def generate_soal_multi_granular(api_key, tipe_soal, kelas, mapel, list_request):
-    # 1. TEXT GENERATION
     url_text = f"https://generativelanguage.googleapis.com/v1beta/models/{TEXT_MODEL}:generateContent?key={api_key}"
     headers = {'Content-Type': 'application/json'}
     
     req_str = ""
     for i, req in enumerate(list_request):
-        # Cek apakah user minta gambar untuk nomor ini?
-        pakai_gambar = "YA (Buatkan deskripsi visual)" if req['use_image'] else "TIDAK (Hanya teks)"
+        pakai_gambar = "YA (Wajib deskripsi visual)" if req['use_image'] else "TIDAK (Hanya teks)"
         req_str += f"- Soal No {i+1}: Topik '{req['topik']}', Level '{req['level']}', Butuh Gambar? {pakai_gambar}\n"
 
-    # Struktur JSON dinamis
-    json_fields = '"no":1,"soal":"...","pembahasan":"..."'
     if tipe_soal == "Pilihan Ganda":
-        json_fields += ',"opsi":["A. ...","B. ...","C. ...","D. ..."],"kunci_index":0'
+        json_structure = """[{"no":1,"soal":"...","opsi":["A. Teks...","B. Teks...","C. Teks...","D. Teks..."],"kunci_index":0,"pembahasan":"...","image_prompt": "..."}]"""
     else:
-        json_fields += ',"poin_kunci":["..."]'
-        
-    # Tambahkan field 'image_prompt'
-    json_fields += ',"image_prompt": "Deskripsi visual dalam bahasa inggris (jika butuh gambar), atau null (jika tidak)"'
+        json_structure = """[{"no":1,"soal":"...","poin_kunci":["..."],"pembahasan":"...","image_prompt": "..."}]"""
 
     prompt = f"""
     Bertindaklah sebagai Guru SD profesional. Buatkan {len(list_request)} soal {tipe_soal} untuk siswa {kelas} SD Kurikulum Merdeka.
@@ -230,33 +228,27 @@ def generate_soal_multi_granular(api_key, tipe_soal, kelas, mapel, list_request)
     Instruksi Per Soal:
     {req_str}
     
-    ATURAN KHUSUS:
-    1. Jika diminta 'Butuh Gambar: YA', buatlah soal yang merujuk pada gambar tersebut (contoh: "Perhatikan gambar di bawah..."). 
-       Lalu isi field 'image_prompt' dengan deskripsi gambar yang detail dalam Bahasa Inggris untuk generator gambar.
-    2. Jika 'Butuh Gambar: TIDAK', buat soal cerita deskriptif biasa. Isi 'image_prompt' dengan null.
-    3. Pilihan Ganda (PG) jangan ALL CAPS. Gunakan Sentence case.
-    4. Hindari LaTeX ($).
+    ATURAN:
+    1. Jika 'Butuh Gambar: YA', isi field 'image_prompt' dengan deskripsi visual (Inggris).
+    2. Jika 'Butuh Gambar: TIDAK', isi 'image_prompt' dengan null.
+    3. Opsi Jawaban PG gunakan Sentence case (Jangan ALL CAPS).
+    4. Hindari LaTeX ($). Gunakan simbol biasa.
     
     Output JSON Array Murni:
-    [ {{ {json_fields} }} ]
+    {json_structure}
     """
     
     try:
-        # Step A: Generate Text Soal
         response = requests.post(url_text, headers=headers, json={"contents": [{"parts": [{"text": prompt}]}]})
         if response.status_code != 200: return None, f"Error Text API: {response.text}"
         
-        text_raw = response.json()['candidates'][0]['content']['parts'][0]['text']
-        clean_json = text_raw.replace("```json", "").replace("```", "").strip()
+        teks = response.json()['candidates'][0]['content']['parts'][0]['text']
+        clean_json = teks.replace("```json", "").replace("```", "").strip()
         data_soal = json.loads(clean_json)
         
-        # Step B: Generate Image (Jika ada request)
         for item in data_soal:
-            item['image_data'] = None # Default kosong
-            
-            # Cek apakah AI memberikan prompt gambar
+            item['image_data'] = None
             if item.get('image_prompt'):
-                # Panggil Fungsi Gambar
                 img_bytes = generate_image_google(api_key, item['image_prompt'])
                 if img_bytes:
                     item['image_data'] = img_bytes
@@ -316,8 +308,7 @@ with st.sidebar:
             
         level_selected = st.selectbox(f"LEVEL SOAL {i+1}", ["Mudah", "Sedang", "Sulit (HOTS)"], key=f"lvl_{i}")
         
-        # --- NEW: CHECKBOX GAMBAR ---
-        use_image = st.checkbox(f"Pakai Gambar?", key=f"img_{i}", help="Centang jika ingin soal ini memiliki ilustrasi gambar")
+        use_image = st.checkbox(f"Pakai Gambar?", key=f"img_{i}")
         
         list_request_user.append({
             "topik": topik_selected, 
@@ -341,7 +332,7 @@ with tab_pg:
     if st.button("🚀 Generate Soal PG", type="primary"):
         if not api_key: st.error("API Key belum diisi")
         else:
-            with st.spinner("Sedang meracik soal & menggambar ilustrasi (mohon tunggu)..."):
+            with st.spinner("Sedang meracik soal & gambar..."):
                 res, err = generate_soal_multi_granular(api_key, "Pilihan Ganda", kelas, mapel, list_request_user)
                 if res:
                     st.session_state.hasil_soal = res
@@ -356,7 +347,6 @@ with tab_pg:
         for idx, item in enumerate(data):
             info_req = list_request_user[idx]
             with st.container(border=True):
-                # TAMPILKAN GAMBAR JIKA ADA
                 if item.get('image_data'):
                     st.image(item['image_data'], caption="Ilustrasi Soal", width=300)
                 
@@ -384,7 +374,7 @@ with tab_uraian:
     if st.button("🚀 Generate Soal Uraian", type="primary"):
         if not api_key: st.error("API Key kosong")
         else:
-            with st.spinner("Sedang membuat soal & gambar..."):
+            with st.spinner("Sedang membuat soal uraian..."):
                 res, err = generate_soal_multi_granular(api_key, "Uraian", kelas, mapel, list_request_user)
                 if res:
                     st.session_state.hasil_soal = res
@@ -398,7 +388,6 @@ with tab_uraian:
         for idx, item in enumerate(data):
             info_req = list_request_user[idx]
             with st.container(border=True):
-                # TAMPILKAN GAMBAR JIKA ADA
                 if item.get('image_data'):
                     st.image(item['image_data'], caption="Ilustrasi Soal", width=300)
 
@@ -408,11 +397,11 @@ with tab_uraian:
                 with st.expander("Lihat Kunci Guru"):
                     st.write(item['pembahasan'])
 
-# --- 10. FOOTER COPYRIGHT (UPDATED) ---
+# --- 10. FOOTER COPYRIGHT (UPDATED: 12px BOLD) ---
 st.markdown("""
-<div style='text-align: center; font-size: 12px; font-weight: bold; margin-top: 20px; padding-top: 10px; border-top: 1px solid #e0e0e0; color: #555; font-family: Poppins;'>
-    <p style='margin: 5px 0;'>Aplikasi Generator Soal ini Milik Bimbingan Belajar Digital "Akademi Pelajar"</p>
-    <p style='margin: 5px 0;'>Dilarang menyebarluaskan tanpa persetujuan tertulis dari Akademi Pelajar</p>
-    <p style='margin: 5px 0;'>Semua hak cipta dilindungi undang-undang</p>
+<div style='text-align: center; font-size: 12px; font-weight: bold; margin-top: 30px; padding-top: 15px; border-top: 1px solid #e0e0e0; color: #555; font-family: Poppins;'>
+    <p style='margin: 3px 0;'>Aplikasi Generator Soal ini Milik Bimbingan Belajar Digital "Akademi Pelajar"</p>
+    <p style='margin: 3px 0;'>Dilarang menyebarluaskan tanpa persetujuan tertulis dari Akademi Pelajar</p>
+    <p style='margin: 3px 0;'>Semua hak cipta dilindungi undang-undang</p>
 </div>
 """, unsafe_allow_html=True)
