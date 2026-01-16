@@ -57,7 +57,7 @@ DATABASE_MATERI = {
     }
 }
 
-# --- 3. STYLE CSS (PADDING 20PX ADDED) ---
+# --- 3. STYLE CSS (FIXED SIDEBAR + CLEAN UI) ---
 st.markdown("""
 <style>
     /* Import Font: League Spartan & Poppins */
@@ -73,10 +73,7 @@ st.markdown("""
     
     /* 2. PADDING MAIN CONTENT */
     .block-container {
-        padding-top: 20px !important;
-        padding-bottom: 20px !important;
-        padding-left: 20px !important;
-        padding-right: 20px !important;
+        padding: 20px !important;
     }
 
     /* 3. Judul Utama */
@@ -97,8 +94,8 @@ st.markdown("""
         margin-bottom: 25px; 
     }
     
-    /* 4. INPUT LABEL */
-    .stSelectbox label, .stTextInput label, .stNumberInput label, .stRadio label {
+    /* 4. INPUT LABEL (Sidebar): BOLD & UPPERCASE */
+    .stSelectbox label, .stTextInput label, .stNumberInput label {
         font-family: 'Poppins', sans-serif !important;
         font-size: 13px !important;
         font-weight: 800 !important;
@@ -107,7 +104,17 @@ st.markdown("""
         letter-spacing: 0.5px;
     }
     
-    /* 5. Tombol Utama */
+    /* 5. LABEL RADIO BUTTON (Opsi Jawaban): STANDARD CASE */
+    /* Penting: text-transform none agar tidak dipaksa kapital oleh CSS lain */
+    .stRadio label {
+        font-family: 'Poppins', sans-serif !important;
+        font-size: 15px !important;
+        font-weight: 400 !important; 
+        color: #333333 !important;
+        text-transform: none !important; 
+    }
+    
+    /* 6. Tombol Utama */
     .stButton>button { 
         width: 100%; 
         border-radius: 8px; 
@@ -118,7 +125,7 @@ st.markdown("""
         color: white;
     }
     
-    /* 6. Clean Sidebar */
+    /* 7. Clean Sidebar */
     div[data-testid="stSidebar"] div[data-testid="stVerticalBlock"] {
         gap: 0.5rem;
     }
@@ -208,7 +215,10 @@ def generate_soal_multi_granular(api_key, tipe_soal, kelas, mapel, list_request)
     ATURAN SANGAT PENTING:
     1. JANGAN PERNAH membuat soal yang merujuk pada gambar visual. Semua soal harus DESKRIPTIF (Soal Cerita).
     2. HINDARI format LaTeX ($). Gunakan simbol keyboard standar (1/2, +, :, x).
-    3. PENULISAN: Gunakan Ejaan Yang Disempurnakan (EYD). Awal kalimat huruf besar, sisanya kecil kecuali nama diri.
+    3. PENULISAN OPSI JAWABAN: Wajib menggunakan 'Sentence case' (Huruf kapital hanya di awal kalimat). 
+       DILARANG KERAS menggunakan HURUF KAPITAL SEMUA (ALL CAPS) pada opsi jawaban.
+       Salah: "A. KITCHEN"
+       Benar: "A. Kitchen"
     4. JANGAN sertakan nomor soal atau tanda bintang (**) di dalam teks json 'soal'.
     
     Output WAJIB JSON Array Murni:
@@ -355,9 +365,9 @@ with tab_uraian:
                 with st.expander("Lihat Kunci Guru"):
                     st.write(item['pembahasan'])
 
-# --- 9. FOOTER COPYRIGHT (FIXED BOTTOM) ---
+# --- 9. FOOTER COPYRIGHT (FIXED BOTTOM CENTER) ---
 st.markdown("""
-<div style='text-align: center; font-size: 16px; margin-top: 50px; padding-top: 20px; border-top: 1px solid #e0e0e0; color: #555; font-family: Poppins;'>
+<div style='text-align: center; font-size: 12px; font-weight: bold; margin-top: 20px; padding-top: 10px; border-top: 1px solid #e0e0e0; color: #555; font-family: Poppins;'>
     <p style='margin: 5px 0;'>Aplikasi Generator Soal ini Milik Bimbingan Belajar Digital "Akademi Pelajar"</p>
     <p style='margin: 5px 0;'>Dilarang menyebarluaskan tanpa persetujuan tertulis dari Akademi Pelajar</p>
     <p style='margin: 5px 0;'>Semua hak cipta dilindungi undang-undang</p>
