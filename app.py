@@ -153,50 +153,35 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 4. FUNGSI GENERATE GAMBAR (FRIENDLY MESSAGE) ---
+# --- 4. FUNGSI GENERATE GAMBAR (VIA POLLINATIONS.AI - GRATIS & STABIL) ---
 def generate_image_google(api_key, image_prompt):
-    # Endpoint v1beta (Standard untuk Imagen 3)
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{IMAGE_MODEL}:predict?key={api_key}"
-    headers = {'Content-Type': 'application/json'}
+    # Kita beralih ke Pollinations.ai karena Google Imagen sering memblokir akses API Key gratis
+    # Layanan ini Gratis, Cepat, dan Aman untuk ilustrasi standar
     
-    # Prompt aman
-    full_prompt = f"cartoon illustration, {image_prompt}, vector style, white background, no text, safe for school"
+    # 1. Bersihkan prompt agar URL friendly
+    clean_prompt = image_prompt.replace(" ", "%20")
     
-    payload = {
-        "instances": [{"prompt": full_prompt}],
-        "parameters": {
-            "sampleCount": 1,
-            "aspectRatio": "1:1" 
-        }
-    }
+    # 2. Tambahkan style agar konsisten (Kartun, Vector, Putih)
+    style_suffix = "cartoon%20vector%20art%20educational%20illustration%20white%20background"
+    
+    # 3. Buat URL Request
+    # Seed acak agar gambar tidak monoton, tapi kita pakai statis biar stabil
+    url = f"https://pollinations.ai/p/{clean_prompt}%20{style_suffix}?width=800&height=800&seed=42&nologo=true"
     
     try:
-        response = requests.post(url, headers=headers, json=payload)
+        # Request Gambar (GET biasa)
+        response = requests.get(url, timeout=10) # Timeout 10 detik
         
-        # JIKA ERROR HTTP
-        if response.status_code != 200:
-            st.warning("⚠️ Maaf gambar belum bisa di generate oleh system, bisa dicoba kembali nanti.")
-            # Debugging tersembunyi (Optional: bisa dihapus jika ingin bersih total)
-            with st.expander("Info Admin (Error Code)"):
-                st.write(f"Code: {response.status_code}")
-                st.write(response.text)
-            return None
-        
-        result = response.json()
-        
-        # JIKA SUKSES
-        if 'predictions' in result and len(result['predictions']) > 0:
-            b64_data = result['predictions'][0]['bytesBase64Encoded']
-            image_bytes = base64.b64decode(b64_data)
-            return BytesIO(image_bytes)
+        if response.status_code == 200:
+            return BytesIO(response.content)
         else:
-            st.warning("⚠️ Maaf gambar belum bisa di generate oleh system (Filter Keamanan).")
+            st.warning("⚠️ Gagal mengambil gambar dari server alternatif.")
             return None
             
-    except Exception:
-        st.warning("⚠️ Maaf gambar belum bisa di generate oleh system, bisa dicoba kembali nanti.")
+    except Exception as e:
+        st.warning(f"⚠️ Koneksi gambar timeout/error: {str(e)}")
         return None
-
+        
 # --- 5. FUNGSI GENERATE WORD (DOCX) ---
 def create_docx(data_soal, tipe, mapel, kelas, list_request):
     doc = Document()
@@ -462,3 +447,4 @@ st.markdown("""
     <p style='margin: 3px 0;'>Semua hak cipta dilindungi undang-undang</p>
 </div>
 """, unsafe_allow_html=True)
+
