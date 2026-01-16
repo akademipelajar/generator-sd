@@ -1,7 +1,10 @@
 import streamlit as st
 import json
 import requests
-import time
+from io import BytesIO
+from docx import Document # Library untuk bikin file Word
+from docx.shared import Pt, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 # --- 1. KONFIGURASI HALAMAN ---
 st.set_page_config(
@@ -13,8 +16,7 @@ st.set_page_config(
 
 MODEL_NAME = "gemini-2.5-flash"
 
-# --- 2. DATABASE MATERI (Sesuai Request) ---
-# Data spesifik untuk Kelas 6 Matematika (Bisa ditambah nanti)
+# --- 2. DATABASE MATERI ---
 DATABASE_MATERI = {
     "6 SD": {
         "Matematika": [
@@ -30,270 +32,223 @@ DATABASE_MATERI = {
             "Konsep rasio (perbandingan dua besaran)",
             "Rasio bagian ke bagian, bagian ke keseluruhan",
             "Perkenalan notasi aljabar (variabel)"
-        ]
+        ],
+        "IPA": ["Sistem Tata Surya", "Rangkaian Listrik", "Adaptasi Makhluk Hidup", "Magnet", "Pubertas"],
+        "Bahasa Indonesia": ["Ide Pokok Paragraf", "Teks Eksplanasi", "Formulir", "Pidato"],
+        "Bahasa Inggris": ["Simple Past Tense", "Direction & Location", "Holiday", "Government"]
     }
 }
 
-# --- 3. CSS & FONT CUSTOM (Google Fonts) ---
+# --- 3. CSS & STYLE ---
 st.markdown("""
 <style>
-    /* Import Font Google: Roboto (Title) & Poppins (Subtitle/Body) */
     @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&family=Roboto:wght@700&display=swap');
-
-    /* Title Styling */
-    h1 {
-        font-family: 'Roboto', sans-serif !important;
-        font-weight: 700;
-        color: #1F1F1F;
-    }
-    
-    /* Subtitle Styling */
-    .subtitle {
-        font-family: 'Poppins', sans-serif !important;
-        font-size: 18px;
-        color: #555555;
-        margin-top: -15px;
-        margin-bottom: 25px;
-    }
-    
-    /* Tombol */
-    .stButton>button {
-        width: 100%;
-        border-radius: 8px;
-        height: 3em;
-        font-family: 'Poppins', sans-serif;
-        font-weight: 600;
-    }
-    
-    /* Expander & Cards */
-    div[data-testid="stExpander"] {
-        border-radius: 8px;
-        border: 1px solid #ddd;
-    }
+    h1 { font-family: 'Roboto', sans-serif !important; font-weight: 700; color: #1F1F1F; }
+    .subtitle { font-family: 'Poppins', sans-serif !important; font-size: 18px; color: #555555; margin-top: -15px; margin-bottom: 25px; }
+    .stButton>button { width: 100%; border-radius: 8px; height: 3em; font-family: 'Poppins', sans-serif; font-weight: 600; }
+    .footer-info { font-size: 13px; font-style: italic; color: #666; margin-top: -10px; margin-bottom: 15px; border-top: 1px dashed #eee; padding-top: 5px;}
 </style>
 """, unsafe_allow_html=True)
 
-# --- 4. LOGIKA AI (Backend Multi-Soal) ---
+# --- 4. FUNGSI GENERATE WORD (DOCX) ---
+def create_docx(data_soal, tipe, mapel, kelas, topik, list_level):
+    doc = Document()
+    
+    # Style Dasar
+    style = doc.styles['Normal']
+    style.font.name = 'Arial'
+    style.font.size = Pt(11)
+
+    # JUDUL DOKUMEN
+    judul = doc.add_heading(f'LATIHAN SOAL {mapel.upper()}', 0)
+    judul.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
+    doc.add_paragraph(f'Kelas: {kelas}\nMateri: {topik}')
+    doc.add_paragraph('_' * 70) # Garis pembatas
+
+    # --- BAGIAN 1: SOAL (Tanpa Kunci) ---
+    doc.add_heading('A. SOAL', level=1)
+    
+    for idx, item in enumerate(data_soal):
+        level_txt = list_level[idx]
+        
+        # Tulis Soal
+        p = doc.add_paragraph()
+        runner = p.add_run(f"{idx+1}. {item['soal']}")
+        runner.bold = True
+        
+        if tipe == "Pilihan Ganda":
+            # Tulis Opsi
+            for op in item['opsi']:
+                doc.add_paragraph(f"    {op}")
+        else:
+            # Space buat jawaban siswa
+            doc.add_paragraph("\n" * 3) 
+
+        # Footer Italic (Request Anda)
+        p_footer = doc.add_paragraph(f"Tingkat Kesulitan: {level_txt} | Materi: {topik}")
+        p_footer.italic = True
+        p_footer.style.font.size = Pt(9)
+        p_footer.style.font.color.rgb = RGBColor(100, 100, 100) # Abu-abu
+        
+        doc.add_paragraph() # Spasi antar soal
+
+    # --- BAGIAN 2: KUNCI JAWABAN (Halaman Baru) ---
+    doc.add_page_break()
+    doc.add_heading('B. KUNCI JAWABAN DAN PEMBAHASAN', level=1)
+    doc.add_paragraph('(Pegangan Guru)')
+    
+    for idx, item in enumerate(data_soal):
+        p = doc.add_paragraph()
+        p.add_run(f"No {idx+1}.").bold = True
+        
+        if tipe == "Pilihan Ganda":
+            kunci = item['opsi'][item['kunci_index']]
+            p.add_run(f" Jawaban: {kunci}")
+        
+        doc.add_paragraph(f"Pembahasan: {item['pembahasan']}")
+        
+        if tipe == "Uraian" and 'poin_kunci' in item:
+            doc.add_paragraph("Poin Penilaian:")
+            for pt in item['poin_kunci']:
+                doc.add_paragraph(f"- {pt}", style='List Bullet')
+        
+        doc.add_paragraph("-" * 20)
+
+    # Simpan ke Memory (BytesIO)
+    bio = BytesIO()
+    doc.save(bio)
+    bio.seek(0)
+    return bio
+
+# --- 5. LOGIKA AI ---
 def generate_soal_multi(api_key, tipe_soal, data_input, list_kesulitan):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={api_key}"
     headers = {'Content-Type': 'application/json'}
     
-    # Merangkai Prompt untuk BANYAK soal sekaligus
     req_soal = ""
     for i, level in enumerate(list_kesulitan):
-        req_soal += f"- Soal No {i+1}: Tingkat Kesulitan {level}\n"
+        req_soal += f"- Soal No {i+1}: Level {level}\n"
 
-    # Struktur JSON yang diminta (Array/List)
     if tipe_soal == "Pilihan Ganda":
-        json_structure = """
-        [
-            {
-                "no": 1,
-                "soal": "Pertanyaan...",
-                "opsi": ["A. x", "B. x", "C. x", "D. x"],
-                "kunci_index": 0,
-                "pembahasan": "..."
-            },
-            ... (ulangi sesuai jumlah soal)
-        ]
-        """
-    else: # Uraian
-        json_structure = """
-        [
-            {
-                "no": 1,
-                "soal": "Pertanyaan...",
-                "poin_kunci": ["..."],
-                "pembahasan": "..."
-            }
-        ]
-        """
+        json_structure = """[{"no":1,"soal":"...","opsi":["A.","B.","C.","D."],"kunci_index":0,"pembahasan":"..."}]"""
+    else:
+        json_structure = """[{"no":1,"soal":"...","poin_kunci":["..."],"pembahasan":"..."}]"""
 
     prompt = f"""
-    Anda adalah asisten guru profesional Kurikulum Merdeka.
-    Buatkan {len(list_kesulitan)} soal {tipe_soal} untuk siswa {data_input['kelas']} SD.
-    Mata Pelajaran: {data_input['mapel']}
-    Topik Materi: {data_input['topik']}
-    
-    Detail Permintaan Soal:
+    Buatkan {len(list_kesulitan)} soal {tipe_soal} {data_input['kelas']} SD.
+    Mapel: {data_input['mapel']}, Topik: {data_input['topik']}
+    Detail:
     {req_soal}
-    
-    Output WAJIB berupa JSON Array murni (tanpa markdown):
-    {json_structure}
+    Output JSON Array Murni: {json_structure}
     """
     
-    payload = {"contents": [{"parts": [{"text": prompt}]}]}
-    
     try:
-        response = requests.post(url, headers=headers, json=payload)
-        if response.status_code != 200:
-            return None, f"Error API: {response.text}"
-        
-        hasil = response.json()
-        teks = hasil['candidates'][0]['content']['parts'][0]['text']
-        teks_bersih = teks.replace("```json", "").replace("```", "").strip()
-        return json.loads(teks_bersih), None
-    except Exception as e:
-        return None, str(e)
+        response = requests.post(url, headers=headers, json={"contents": [{"parts": [{"text": prompt}]}]})
+        if response.status_code != 200: return None, f"Error: {response.text}"
+        teks = response.json()['candidates'][0]['content']['parts'][0]['text']
+        return json.loads(teks.replace("```json", "").replace("```", "").strip()), None
+    except Exception as e: return None, str(e)
 
-# --- 5. SESSION STATE ---
-if 'hasil_soal' not in st.session_state:
-    st.session_state.hasil_soal = None
-if 'tipe_aktif' not in st.session_state:
-    st.session_state.tipe_aktif = None
+# --- 6. SESSION STATE ---
+if 'hasil_soal' not in st.session_state: st.session_state.hasil_soal = None
+if 'tipe_aktif' not in st.session_state: st.session_state.tipe_aktif = None
 
-# --- 6. SIDEBAR (PANEL GURU) ---
+# --- 7. SIDEBAR ---
 with st.sidebar:
     st.header("⚙️ Panel Guru")
+    if "GOOGLE_API_KEY" in st.secrets: api_key = st.secrets["GOOGLE_API_KEY"]
+    else: api_key = st.text_input("🔑 API Key", type="password")
     
-    # API Key Logic
-    if "GOOGLE_API_KEY" in st.secrets:
-        api_key = st.secrets["GOOGLE_API_KEY"]
-    else:
-        api_key = st.text_input("🔑 API Key", type="password")
-
     st.divider()
+    kelas = st.selectbox("Kelas", [f"{i} SD" for i in range(1, 7)], index=5)
+    mapel = st.selectbox("Mapel", ["Matematika", "Bahasa Indonesia", "Bahasa Inggris", "IPA"])
     
-    # 1. Pilih Kelas & Mapel
-    kelas = st.selectbox("Kelas", [f"{i} SD" for i in range(1, 7)], index=5) # Default Kelas 6
-    mapel = st.selectbox("Mata Pelajaran", ["Matematika", "Bahasa Indonesia", "Bahasa Inggris", "IPA"])
-    
-    # 2. Logic Topik (Otomatis vs Manual)
     pilihan_topik = []
     topik_final = ""
-    
-    # Cek apakah ada di database kita?
     if kelas in DATABASE_MATERI and mapel in DATABASE_MATERI[kelas]:
-        # Pakai Multiselect (Dropdown Centang)
-        st.caption(f"📚 Materi Tersedia ({kelas} - {mapel}):")
-        pilihan_topik = st.multiselect(
-            "Pilih Sub-Bab / Materi:",
-            options=DATABASE_MATERI[kelas][mapel],
-            placeholder="Pilih materi (bisa lebih dari 1)"
-        )
-        # Gabungkan pilihan jadi satu string koma
-        if pilihan_topik:
-            topik_final = ", ".join(pilihan_topik)
+        pilihan_topik = st.multiselect("Pilih Materi:", DATABASE_MATERI[kelas][mapel])
+        if pilihan_topik: topik_final = ", ".join(pilihan_topik)
     else:
-        # Input Manual jika data belum ada
-        topik_final = st.text_input("Topik / Materi", placeholder="Ketik topik materi...")
-        if kelas == "6 SD" and mapel == "Matematika":
-            pass # Harusnya masuk if atas, ini jaga-jaga
-        else:
-            st.caption("ℹ️ Database materi untuk kelas ini belum lengkap, silakan ketik manual.")
+        topik_final = st.text_input("Topik Manual", placeholder="Ketik topik...")
 
-    st.divider()
-
-    # 3. Jumlah & Kesulitan Soal (Dropdown Dinamis)
-    col_jml, col_space = st.columns([1, 0.2])
-    with col_jml:
-        jml_soal = st.selectbox("Jumlah Soal", [1, 2, 3])
+    col_jml, _ = st.columns([1, 0.2])
+    with col_jml: jml_soal = st.selectbox("Jml Soal", [1, 2, 3])
     
-    # List untuk menampung level tiap soal
-    list_level_request = []
-    
-    st.caption("Atur Tingkat Kesulitan:")
-    # Loop untuk membuat dropdown sesuai jumlah soal
+    list_level = []
+    st.caption("Kesulitan:")
     for i in range(jml_soal):
-        lev = st.selectbox(
-            f"Soal No. {i+1}", 
-            ["Mudah", "Sedang", "Sulit (HOTS)"], 
-            key=f"lvl_{i}"
-        )
-        list_level_request.append(lev)
+        list_level.append(st.selectbox(f"No. {i+1}", ["Mudah", "Sedang", "Sulit (HOTS)"], key=f"l_{i}"))
     
-    st.markdown("---")
     if st.button("🗑️ Reset"):
         st.session_state.hasil_soal = None
         st.rerun()
 
-# --- 7. AREA UTAMA (UI BARU) ---
-
-# Header Custom Font
+# --- 8. UI UTAMA ---
 st.markdown("<h1>Generator Soal Sekolah Dasar (SD)</h1>", unsafe_allow_html=True)
 st.markdown('<div class="subtitle">Berdasarkan Kurikulum Merdeka</div>', unsafe_allow_html=True)
 
-# Tabs
 tab_pg, tab_uraian = st.tabs(["📝 Pilihan Ganda", "✍️ Soal Uraian"])
 
 # === TAB PG ===
 with tab_pg:
-    if st.button("🚀 Generate Soal PG", type="primary"):
-        if not api_key:
-            st.error("API Key belum diisi.")
-        elif not topik_final:
-            st.warning("Mohon pilih atau isi Topik Materi terlebih dahulu.")
-        else:
-            with st.spinner(f"Sedang membuat {jml_soal} soal (Kombinasi: {', '.join(list_level_request)})..."):
-                data_input = {"kelas": kelas, "mapel": mapel, "topik": topik_final}
-                hasil, error = generate_soal_multi(api_key, "Pilihan Ganda", data_input, list_level_request)
-                
-                if hasil:
-                    st.session_state.hasil_soal = hasil
+    if st.button("🚀 Generate PG", type="primary"):
+        if api_key and topik_final:
+            with st.spinner("Membuat soal..."):
+                res, err = generate_soal_multi(api_key, "Pilihan Ganda", {"kelas":kelas, "mapel":mapel, "topik":topik_final}, list_level)
+                if res:
+                    st.session_state.hasil_soal = res
                     st.session_state.tipe_aktif = "PG"
-                else:
-                    st.error(error)
+                else: st.error(err)
+        else: st.warning("Lengkapi data!")
 
-    # TAMPILKAN HASIL (Looping)
     if st.session_state.hasil_soal and st.session_state.tipe_aktif == "PG":
-        all_soal = st.session_state.hasil_soal
-        st.success(f"✅ Berhasil membuat {len(all_soal)} soal tentang: {topik_final}")
+        data = st.session_state.hasil_soal
         
-        # Container Download String
-        txt_download = f"LATIHAN SOAL {mapel.upper()} - {kelas}\nMateri: {topik_final}\n\n"
-        
-        for idx, item in enumerate(all_soal):
-            with st.container(border=True):
-                # Header Kecil: No 1 (Mudah)
-                st.markdown(f"**No. {idx+1}** <span style='color:grey; font-size:0.8em'>({list_level_request[idx]})</span>", unsafe_allow_html=True)
-                st.write(item['soal'])
-                
-                # Radio Button Unik tiap soal
-                user_ans = st.radio(f"Jawaban No {idx+1}", item['opsi'], key=f"ans_{idx}")
-                
-                # Accordion Kunci
-                with st.expander("Lihat Kunci & Pembahasan"):
-                    kunci_txt = item['opsi'][item['kunci_index']]
-                    if user_ans == kunci_txt:
-                        st.success(f"Benar! Jawabannya {kunci_txt}")
-                    else:
-                        st.error(f"Kunci: {kunci_txt}")
-                    st.write(f"**Pembahasan:** {item['pembahasan']}")
-            
-            # Append ke text download
-            txt_download += f"{idx+1}. {item['soal']}\n"
-            for op in item['opsi']: txt_download += f"   {op}\n"
-            txt_download += f"   Kunci: {item['opsi'][item['kunci_index']]}\n   Pembahasan: {item['pembahasan']}\n\n"
+        # Tombol Download Word
+        docx_file = create_docx(data, "Pilihan Ganda", mapel, kelas, topik_final, list_level)
+        st.download_button("📥 Download Dokumen Word (.docx)", docx_file, 
+                           file_name=f"Soal_PG_{mapel}.docx", 
+                           mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
-        st.download_button("📥 Download Semua Soal (TXT)", txt_download, file_name="Latihan_Soal.txt")
+        for idx, item in enumerate(data):
+            with st.container(border=True):
+                st.write(f"**{idx+1}. {item['soal']}**")
+                ans = st.radio(f"Jawab {idx+1}", item['opsi'], key=f"pg_{idx}")
+                
+                # Footer Italic
+                st.markdown(f"<div class='footer-info'>Tingkat Kesulitan: {list_level[idx]} | Materi: {topik_final}</div>", unsafe_allow_html=True)
+                
+                with st.expander("Cek Kunci"):
+                    if ans == item['opsi'][item['kunci_index']]: st.success("Benar!")
+                    else: st.error(f"Kunci: {item['opsi'][item['kunci_index']]}")
+                    st.write(f"**Pembahasan:** {item['pembahasan']}")
 
 # === TAB URAIAN ===
 with tab_uraian:
-    if st.button("🚀 Generate Soal Uraian", type="primary"):
-        if not api_key or not topik_final:
-            st.warning("Lengkapi data dulu.")
-        else:
-            with st.spinner("Sedang membuat soal uraian..."):
-                data_input = {"kelas": kelas, "mapel": mapel, "topik": topik_final}
-                hasil, error = generate_soal_multi(api_key, "Uraian", data_input, list_level_request)
-                
-                if hasil:
-                    st.session_state.hasil_soal = hasil
+    if st.button("🚀 Generate Uraian", type="primary"):
+        if api_key and topik_final:
+            with st.spinner("Membuat soal..."):
+                res, err = generate_soal_multi(api_key, "Uraian", {"kelas":kelas, "mapel":mapel, "topik":topik_final}, list_level)
+                if res:
+                    st.session_state.hasil_soal = res
                     st.session_state.tipe_aktif = "URAIAN"
     
     if st.session_state.hasil_soal and st.session_state.tipe_aktif == "URAIAN":
-        all_soal = st.session_state.hasil_soal
-        txt_download = f"LATIHAN URAIAN {mapel.upper()} - {kelas}\nMateri: {topik_final}\n\n"
+        data = st.session_state.hasil_soal
         
-        for idx, item in enumerate(all_soal):
+        docx_file = create_docx(data, "Uraian", mapel, kelas, topik_final, list_level)
+        st.download_button("📥 Download Dokumen Word (.docx)", docx_file, 
+                           file_name=f"Soal_Uraian_{mapel}.docx",
+                           mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+        for idx, item in enumerate(data):
             with st.container(border=True):
-                st.markdown(f"**Soal {idx+1}** <span style='color:grey'>({list_level_request[idx]})</span>", unsafe_allow_html=True)
-                st.write(item['soal'])
-                st.text_area(f"Jawaban Siswa No {idx+1}", height=100, key=f"essay_{idx}")
+                st.write(f"**Soal {idx+1}:** {item['soal']}")
                 
-                with st.expander("Kunci Jawaban Guru"):
+                # Footer Italic
+                st.markdown(f"<div class='footer-info'>Tingkat Kesulitan: {list_level[idx]} | Materi: {topik_final}</div>", unsafe_allow_html=True)
+                
+                st.text_area("Jawab:", height=100, key=f"ur_{idx}")
+                with st.expander("Lihat Kunci Guru"):
                     st.write(item['pembahasan'])
-            
-            txt_download += f"{idx+1}. {item['soal']}\n   Jawaban: {item['pembahasan']}\n\n"
-            
-        st.download_button("📥 Download Soal Uraian (TXT)", txt_download, file_name="Soal_Uraian.txt")
