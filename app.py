@@ -57,43 +57,43 @@ DATABASE_MATERI = {
     }
 }
 
-# --- 3. STYLE CSS (CLEAN & BOLD INPUT) ---
+# --- 3. STYLE CSS (REVISI FONT SIZE) ---
 st.markdown("""
 <style>
-    /* Import Font: League Spartan (Judul) & Poppins (Body) */
+    /* Import Font: League Spartan & Poppins */
     @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@500;700&family=Poppins:wght@400;600;700&display=swap');
     
-    /* 1. Sidebar Background: Biru Tipis (Soft Blue) */
+    /* 1. Sidebar Background: Biru Sangat Tipis (Soft Blue) */
     [data-testid="stSidebar"] {
-        background-color: #e6f3ff; /* Biru sangat muda */
+        background-color: #e6f3ff; 
         border-right: 1px solid #d1e5f0;
     }
     
-    /* 2. Judul Utama (League Spartan) */
+    /* 2. Judul Utama (League Spartan - Ukuran 30px) */
     h1 { 
         font-family: 'League Spartan', sans-serif !important; 
         font-weight: 700; 
         color: #1a1a1a; 
-        font-size: 30px !important; /* Diperkecil sesuai request (compact header) */
-        margin-bottom: 0px !important;
+        font-size: 30px !important; /* UPDATED: 30px */
+        margin-bottom: 5px !important;
     }
     
-    /* Subtitle */
+    /* Subtitle (Ukuran 18px) */
     .subtitle { 
         font-family: 'Poppins', sans-serif !important; 
-        font-size: 18px; 
+        font-size: 18px; /* UPDATED: 18px */
         color: #666666; 
-        margin-top: -5px; 
+        margin-top: 0px; 
         margin-bottom: 25px; 
     }
     
-    /* 3. INPUT LABEL: BOLD, HITAM, UPPERCASE (Sesuai request) */
+    /* 3. INPUT LABEL: BOLD, HITAM, UPPERCASE */
     .stSelectbox label, .stTextInput label, .stNumberInput label, .stRadio label {
         font-family: 'Poppins', sans-serif !important;
         font-size: 13px !important;
         font-weight: 800 !important; /* Sangat Tebal */
         color: #000000 !important; /* Hitam Pekat */
-        text-transform: uppercase; /* Huruf Kapital Semua */
+        text-transform: uppercase;
         letter-spacing: 0.5px;
     }
     
@@ -108,12 +108,12 @@ st.markdown("""
         color: white;
     }
     
-    /* 5. Membersihkan Tampilan Sidebar (Hapus kotak putih pengganggu) */
+    /* 5. Clean Sidebar */
     div[data-testid="stSidebar"] div[data-testid="stVerticalBlock"] {
-        gap: 1rem;
+        gap: 0.5rem;
     }
     
-    /* Footer Info */
+    /* Footer Info di Kartu Soal */
     .footer-info {
         font-family: 'Poppins', sans-serif;
         font-size: 12px;
@@ -218,9 +218,8 @@ if 'tipe_aktif' not in st.session_state: st.session_state.tipe_aktif = None
 # --- 7. SIDEBAR (KONFIGURASI UTAMA PANEL GURU) ---
 with st.sidebar:
     
-    # === PERBAIKAN LOGO (CLEAN, NO CARD) ===
+    # === PERBAIKAN LOGO (CLEAN, CENTER) ===
     if os.path.exists("logo.png"):
-        # Gunakan kolom agar center
         c1, c2, c3 = st.columns([1, 2, 1])
         with c2:
             st.image("logo.png", width=100)
@@ -228,7 +227,7 @@ with st.sidebar:
         st.caption("Admin: Upload logo.png")
     
     # Tulisan Panel Guru (Font League Spartan, Center)
-    st.markdown("<h3 style='text-align: center; font-family: League Spartan; margin-top:0;'>KONFIGURASI UTAMA PANEL GURU</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align: center; font-family: League Spartan; font-size:18px; margin-top:0;'>KONFIGURASI UTAMA<br>PANEL GURU</h3>", unsafe_allow_html=True)
     
     # API KEY INPUT
     if "GOOGLE_API_KEY" in st.secrets: api_key = st.secrets["GOOGLE_API_KEY"]
@@ -247,21 +246,22 @@ with st.sidebar:
                         else: st.warning("❌ Tidak ada Imagen")
                 except: pass
 
-    st.markdown("---") # Garis Pembatas Tipis
+    st.markdown("---") 
     
-    # --- INPUT UTAMA (Label otomatis jadi BOLD krn CSS di atas) ---
+    # --- INPUT UTAMA ---
     kelas = st.selectbox("KELAS", [f"{i} SD" for i in range(1, 7)], index=5)
     
     mapel = st.selectbox("MATA PELAJARAN", ["Matematika", "IPA", "Bahasa Indonesia", "Bahasa Inggris"])
     
     st.divider()
     
+    # JUMLAH SOAL 1-5
     jml_soal = st.selectbox("JUMLAH SOAL", [1, 2, 3, 4, 5])
     
     list_request_user = [] 
     
     # Header Kecil
-    st.markdown("<br><div style='font-weight:bold; font-size:14px; border-bottom:1px solid #ccc; margin-bottom:10px;'>KONFIGURASI PER SOAL</div>", unsafe_allow_html=True)
+    st.markdown("<br><div style='font-weight:bold; font-size:14px; border-bottom:1px solid #ccc; margin-bottom:10px; color:#333;'>KONFIGURASI PER SOAL</div>", unsafe_allow_html=True)
     
     for i in range(jml_soal):
         st.markdown(f"**# Soal {i+1}**")
@@ -342,5 +342,3 @@ with tab_uraian:
                 st.text_area("Jawab:", height=80, key=f"essay_{idx}")
                 with st.expander("Lihat Kunci Guru"):
                     st.write(item['pembahasan'])
-
-
