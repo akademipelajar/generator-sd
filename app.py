@@ -16,7 +16,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- 2. STYLE CSS (DIKUNCI: Header, Sidebar Gradient, Font) ---
+# --- 2. STYLE CSS (DIKUNCI: Header, Sidebar Gradient, Font, Footer) ---
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@700&family=Poppins:ital,wght@1,700&display=swap');
@@ -50,7 +50,12 @@ st.markdown("""
         font-weight: bold;
         font-size: 16px;
     }
-    /* Membuat tombol di sidebar terlihat serasi */
+    .metadata-text {
+        font-size: 12px;
+        font-style: italic;
+        color: #666;
+        margin-top: 10px;
+    }
     div.stButton > button {
         width: 100%;
     }
@@ -97,10 +102,11 @@ DATABASE_MATERI = {
     }
 }
 
-# --- 4. FUNGSI GAMBAR ---
+# --- 4. FUNGSI LOGIKA GAMBAR ---
 def construct_img_url(prompt):
-    full_prompt = f"{prompt}, simple cartoon vector, educational illustration, white background"
-    return f"https://image.pollinations.ai/prompt/{quote(full_prompt)}?width=512&height=512&nologo=true&seed={int(time.time())}"
+    # Prompt diperkuat dengan gaya diagram teknis jika Matematika
+    full_prompt = f"{prompt}, flat educational vector illustration, clear lines, white background, classroom style, minimalist"
+    return f"https://image.pollinations.ai/prompt/{quote(full_prompt)}?width=600&height=400&nologo=true&seed={int(time.time())}"
 
 def safe_download_image(url):
     try:
@@ -125,10 +131,11 @@ def create_docx(data_soal, mapel, kelas):
         if item.get('img_url'):
             img_data = safe_download_image(item['img_url'])
             if img_data:
-                try: doc.add_picture(img_data, width=Inches(2.5))
+                try: doc.add_picture(img_data, width=Inches(3.0))
                 except: pass
         for op in item['opsi']:
             doc.add_paragraph(op)
+        doc.add_paragraph(f"Materi: {item['materi']} | Level: {item['level']}", style='Normal')
 
     doc.add_page_break()
     doc.add_heading('B. KUNCI JAWABAN', level=1)
@@ -139,11 +146,16 @@ def create_docx(data_soal, mapel, kelas):
     bio.seek(0)
     return bio
 
-# --- 6. SIDEBAR (LOGO, TOMBOL GENERATE & RESET) ---
+# --- 6. SESSION STATE & SIDEBAR LOGIC ---
 if 'hasil_soal' not in st.session_state:
     st.session_state.hasil_soal = None
+if 'reset_counter' not in st.session_state:
+    st.session_state.reset_counter = 0
 
 with st.sidebar:
+    # Menggunakan reset_counter sebagai suffix key agar widget benar-benar ter-reset
+    suffix = st.session_state.reset_counter
+    
     if os.path.exists("logo.png"):
         c1, c2, c3 = st.columns([1, 2, 1])
         with c2: st.image("logo.png", width=100)
@@ -153,33 +165,32 @@ with st.sidebar:
     if "OPENAI_API_KEY" in st.secrets:
         api_key = st.secrets["OPENAI_API_KEY"]
     else:
-        api_key = st.text_input("Masukkan OpenAI API Key", type="password")
+        api_key = st.text_input("Masukkan OpenAI API Key", type="password", key=f"api_{suffix}")
         if not api_key: st.stop()
 
-    kelas_sel = st.selectbox("Pilih Kelas", list(DATABASE_MATERI.keys()))
-    mapel_sel = st.selectbox("Pilih Mata Pelajaran", list(DATABASE_MATERI[kelas_sel].keys()))
-    jml_soal = st.slider("Jumlah Soal", 1, 5, 2)
+    kelas_sel = st.selectbox("Pilih Kelas", list(DATABASE_MATERI.keys()), key=f"kelas_{suffix}")
+    mapel_sel = st.selectbox("Pilih Mata Pelajaran", list(DATABASE_MATERI[kelas_sel].keys()), key=f"mapel_{suffix}")
+    jml_soal = st.slider("Jumlah Soal", 1, 5, 2, key=f"jml_{suffix}")
 
     req_details = []
     for i in range(jml_soal):
-        with st.expander(f"Pengaturan Soal {i+1}", expanded=True):
-            topik = st.selectbox("Materi", DATABASE_MATERI[kelas_sel][mapel_sel], key=f"top_{i}")
-            level = st.selectbox("Level", ["Mudah", "Sedang", "Sulit"], key=f"lvl_{i}")
-            # Default centang gambar hanya pada soal nomor 1
-            img_on = st.checkbox("Gunakan Gambar", value=(True if i==0 else False), key=f"img_{i}")
+        with st.expander(f"Soal {i+1}", expanded=(i==0)):
+            topik = st.selectbox("Materi", DATABASE_MATERI[kelas_sel][mapel_sel], key=f"top_{i}_{suffix}")
+            level = st.selectbox("Level", ["Mudah", "Sedang", "Sulit"], key=f"lvl_{i}_{suffix}")
+            img_on = st.checkbox("Gunakan Gambar", value=(True if i==0 else False), key=f"img_{i}_{suffix}")
             req_details.append({"topik": topik, "level": level, "use_image": img_on})
 
-    # KOLOM UNTUK TOMBOL GENERATE DAN RESET
     col_btn1, col_btn2 = st.columns(2)
     with col_btn1:
         btn_gen = st.button("🚀 Generate", type="primary")
     with col_btn2:
         if st.button("🔄 Reset"):
+            # Reset total hasil dan widget sidebar
             st.session_state.hasil_soal = None
-            st.rerun() # Refresh aplikasi ke kondisi awal
+            st.session_state.reset_counter += 1
+            st.rerun()
 
 # --- 7. MAIN PAGE ---
-# --- HEADER DIKUNCI ---
 st.markdown('<div class="header-title">Generator Soal SD</div>', unsafe_allow_html=True)
 st.markdown('<div class="header-sub">Berdasarkan Kurikulum Merdeka</div>', unsafe_allow_html=True)
 st.markdown('<div class="warning-text">⚠️ Ketentuan: Soal dengan ilustrasi gambar maksimal 1 per sesi agar hasil lebih akurat.</div>', unsafe_allow_html=True)
@@ -187,34 +198,33 @@ st.write("---")
 
 if btn_gen:
     client = OpenAI(api_key=api_key)
-    status_box = st.status("🚀 Memulai proses pembuatan soal...", expanded=True)
-    status_box.write("🧠 AI Guru Senior sedang menyusun Bank Soal...")
+    # Update Pesan Sesuai Permintaan
+    status_box = st.status("✅ Soal Dalam Proses Pembuatan, Silahkan Ditunggu.", expanded=True)
     
     materi_summary = ""
     for i, req in enumerate(req_details):
-        materi_summary += f"- Soal {i+1}: Materi '{req['topik']}', Tingkat Kesulitan '{req['level']}'\n"
+        materi_summary += f"- Soal {i+1}: Materi '{req['topik']}', Level '{req['level']}'\n"
 
-    system_prompt = """Anda adalah Guru Senior SD berprestasi dengan pengalaman puluhan tahun menyusun Bank Soal tingkat Nasional. 
-    Anda sangat teliti dalam membuat pertanyaan yang mendidik dan opsi jawaban (distraktor) yang logis namun akurat. 
-    WAJIB: Jika dalam pembahasan Anda menyebutkan ciri fisik tertentu (contoh: 'Bulat Sempurna' untuk Bola), maka ciri tersebut HARUS ada dalam salah satu opsi jawaban sebagai jawaban yang benar. 
-    Buatkan soal yang benar-benar sesuai dengan materi dan level kognitif yang diminta."""
+    system_prompt = """Anda adalah Guru Senior SD. Anda sangat teliti dalam membuat soal.
+    TUGAS KHUSUS GAMBAR: Jika soal memerlukan gambar (geometry/counting), buatlah 'image_prompt' yang SANGAT DETAIL mendeskripsikan angka dan objek dalam soal.
+    Contoh: Jika soal tentang radius lingkaran 7cm, buat prompt: 'A mathematical diagram of a circle with a radius line clearly labeled 7cm'.
+    Jika soal tentang 3 apel, buat prompt: 'Three red apples on a wooden table, clearly visible for counting'."""
     
     user_prompt = f"""
-    Buatkan soal untuk Mata Pelajaran: {mapel_sel}, Kelas: {kelas_sel}.
-    
-    Rincian per Nomor:
+    Mata Pelajaran: {mapel_sel}, Kelas: {kelas_sel}.
     {materi_summary}
-    
-    Output WAJIB format JSON murni:
+    Berikan output JSON:
     {{
       "soal_list": [
         {{
           "no": 1,
-          "soal": "isi pertanyaan",
-          "opsi": ["A. pilihan", "B. pilihan", "C. pilihan", "D. pilihan"],
+          "soal": "pertanyaan",
+          "opsi": ["A...", "B...", "C...", "D..."],
           "kunci_index": 0,
-          "pembahasan": "penjelasan mendalam",
-          "image_prompt": "simple english description for illustration"
+          "pembahasan": "...",
+          "image_prompt": "DEKRIPSI VISUAL DETAIL SESUAI ANGKA SOAL",
+          "materi_asli": "nama materi dari input",
+          "level_asli": "level dari input"
         }}
       ]
     }}
@@ -223,37 +233,35 @@ if btn_gen:
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
+            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
             response_format={"type": "json_object"}
         )
         
         data = json.loads(response.choices[0].message.content)["soal_list"]
         
-        status_box.write("🎨 Menyiapkan ilustrasi gambar...")
         progress_bar = st.progress(0)
-        
         for i, item in enumerate(data):
-            percent = int(((i + 1) / len(data)) * 100)
-            progress_bar.progress(percent)
+            # Mapping materi/level kembali untuk ditampilkan
+            item['materi'] = req_details[i]['topik']
+            item['level'] = req_details[i]['level']
             
             item['img_url'] = None
             if i < len(req_details) and req_details[i]['use_image']:
-                status_box.write(f"🖼️ Membuat ilustrasi untuk soal nomor {i+1}...")
+                status_box.write(f"🖼️ Membuat ilustrasi spesifik untuk materi {item['materi']}...")
                 item['img_url'] = construct_img_url(item.get('image_prompt', 'educational illustration'))
-                time.sleep(1)
-        
+            
+            percent = int(((i + 1) / len(data)) * 100)
+            progress_bar.progress(percent)
+            time.sleep(0.5)
+            
         st.session_state.hasil_soal = data
         progress_bar.empty()
-        status_box.update(label="✅ Soal Berhasil Dibuat!", state="complete", expanded=False)
+        status_box.update(label="✅ Selesai! Soal siap ditinjau.", state="complete", expanded=False)
         
     except Exception as e:
         status_box.update(label="❌ Terjadi kesalahan", state="error")
         st.error(f"Gagal: {e}")
 
-# TAMPILKAN HASIL JIKA ADA
 if st.session_state.hasil_soal:
     docx_file = create_docx(st.session_state.hasil_soal, mapel_sel, kelas_sel)
     st.download_button("📥 Download Word (.docx)", data=docx_file, file_name=f"Soal_{mapel_sel}.docx")
@@ -266,19 +274,21 @@ if st.session_state.hasil_soal:
             st.markdown(f"**{item['soal']}**")
             
             if item.get('img_url'):
-                st.image(item['img_url'], width=350, caption="Ilustrasi Soal")
+                st.image(item['img_url'], use_container_width=False, width=450)
             
-            pilihan = st.radio("Pilih jawaban:", item['opsi'], key=f"ans_{idx}", index=None)
+            pilihan = st.radio("Pilih jawaban:", item['opsi'], key=f"ans_{idx}_{st.session_state.reset_counter}", index=None)
+            
+            # Note Materi & Level (Italic di bawah opsi)
+            st.markdown(f"<div class='metadata-text'>Materi : {item['materi']} | Level : {item['level']}</div>", unsafe_allow_html=True)
             
             if pilihan:
-                idx_user = item['opsi'].index(pilihan)
-                if idx_user == item['kunci_index']:
+                if item['opsi'].index(pilihan) == item['kunci_index']:
                     st.success("✅ Jawaban Anda Benar!")
                 else:
                     st.error("❌ Jawaban Anda Salah.")
             
             with st.expander("Kunci & Pembahasan"):
-                st.info(f"Kunci Jawaban: {item['opsi'][item['kunci_index']]}")
+                st.info(f"Kunci: {item['opsi'][item['kunci_index']]}")
                 st.write(item['pembahasan'])
 
 # --- 8. FOOTER DIKUNCI (BOLD) ---
