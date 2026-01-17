@@ -34,6 +34,12 @@ st.markdown("""
         font-weight: bold;
         font-style: italic;
         color: #444;
+        margin-bottom: 5px;
+    }
+    .warning-text {
+        font-size: 13px;
+        color: #d9534f;
+        font-weight: bold;
         margin-bottom: 20px;
     }
     [data-testid="stSidebar"] {
@@ -145,14 +151,14 @@ with st.sidebar:
 
     kelas_sel = st.selectbox("Pilih Kelas", list(DATABASE_MATERI.keys()))
     mapel_sel = st.selectbox("Pilih Mata Pelajaran", list(DATABASE_MATERI[kelas_sel].keys()))
-    jml_soal = st.slider("Jumlah Soal", 1, 5, 1)
+    jml_soal = st.slider("Jumlah Soal", 1, 5, 2)
 
     req_details = []
     for i in range(jml_soal):
         with st.expander(f"Pengaturan Soal {i+1}", expanded=True):
             topik = st.selectbox("Materi", DATABASE_MATERI[kelas_sel][mapel_sel], key=f"top_{i}")
             level = st.selectbox("Level", ["Mudah", "Sedang", "Sulit"], key=f"lvl_{i}")
-            img_on = st.checkbox("Gunakan Gambar", value=True, key=f"img_{i}")
+            img_on = st.checkbox("Gunakan Gambar", value=(True if i==0 else False), key=f"img_{i}")
             req_details.append({"topik": topik, "level": level, "use_image": img_on})
 
     btn_gen = st.button("🚀 Generate Soal", type="primary")
@@ -161,6 +167,7 @@ with st.sidebar:
 # --- HEADER DIKUNCI ---
 st.markdown('<div class="header-title">Generator Soal SD</div>', unsafe_allow_html=True)
 st.markdown('<div class="header-sub">Berdasarkan Kurikulum Merdeka</div>', unsafe_allow_html=True)
+st.markdown('<div class="warning-text">⚠️ Ketentuan: Soal dengan ilustrasi gambar maksimal 1 per sesi agar hasil lebih akurat.</div>', unsafe_allow_html=True)
 st.write("---")
 
 if 'hasil_soal' not in st.session_state:
@@ -168,36 +175,35 @@ if 'hasil_soal' not in st.session_state:
 
 if btn_gen:
     client = OpenAI(api_key=api_key)
-    
-    # 1. GENERATE TEKS SOAL DAHULU
     status_box = st.status("🚀 Memulai proses pembuatan soal...", expanded=True)
-    status_box.write("🧠 AI sedang meramu soal berdasarkan materi...")
+    status_box.write("🧠 AI Guru Senior sedang menyusun Bank Soal...")
     
-    # Membangun rincian materi untuk prompt yang lebih tajam
     materi_summary = ""
     for i, req in enumerate(req_details):
         materi_summary += f"- Soal {i+1}: Materi '{req['topik']}', Tingkat Kesulitan '{req['level']}'\n"
 
-    # PROMPT TAJAM ANDA
-    system_prompt = "Anda adalah seorang guru yang ahli dalam membuat soal-soal dan memiliki banyak bank soal untuk tingkat SD. Buatkan soal sesuai materi dan tingkat kesulitan/level yang ditentukan oleh system atau dipilih oleh user, ingat soal itu harus sesuai dengan materi dan level yang dipilih."
+    # PERSONA GURU SENIOR DIBERSIHKAN DAN DITAJAMKAN
+    system_prompt = """Anda adalah Guru Senior SD berprestasi dengan pengalaman puluhan tahun menyusun Bank Soal tingkat Nasional. 
+    Anda sangat teliti dalam membuat pertanyaan yang mendidik dan opsi jawaban (distraktor) yang logis namun akurat. 
+    WAJIB: Jika dalam pembahasan Anda menyebutkan ciri fisik tertentu (contoh: 'Bulat Sempurna' untuk Bola), maka ciri tersebut HARUS ada dalam salah satu opsi jawaban sebagai jawaban yang benar. 
+    Buatkan soal yang benar-benar sesuai dengan materi dan level kognitif yang diminta."""
     
     user_prompt = f"""
-    Mata Pelajaran: {mapel_sel}
-    Kelas: {kelas_sel}
+    Buatkan soal untuk Mata Pelajaran: {mapel_sel}, Kelas: {kelas_sel}.
     
-    Rincian Materi per Nomor:
+    Rincian per Nomor:
     {materi_summary}
     
-    WAJIB memberikan output dalam format JSON yang valid:
+    Output WAJIB format JSON murni:
     {{
       "soal_list": [
         {{
           "no": 1,
-          "soal": "pertanyaan",
-          "opsi": ["A. pilihan", "B. pilihan", "C. pilihan", "D. pilihan"],
+          "soal": "isi pertanyaan yang tajam",
+          "opsi": ["A. pilihan yang akurat", "B. distraktor logis", "C. distraktor logis", "D. distraktor logis"],
           "kunci_index": 0,
-          "pembahasan": "pembahasan sesuai materi",
-          "image_prompt": "simple english description of the object"
+          "pembahasan": "penjelasan mendalam sesuai materi",
+          "image_prompt": "simple english description for high-quality educational illustration"
         }}
       ]
     }}
@@ -215,27 +221,25 @@ if btn_gen:
         
         data = json.loads(response.choices[0].message.content)["soal_list"]
         
-        # 2. PROSES GAMBAR DENGAN BAR INDIKATOR
-        status_box.write("🎨 Menyiapkan ilustrasi gambar untuk setiap nomor...")
+        status_box.write("🎨 Menyiapkan ilustrasi gambar...")
         progress_bar = st.progress(0)
         
         for i, item in enumerate(data):
-            # Update bar bergerak
             percent = int(((i + 1) / len(data)) * 100)
             progress_bar.progress(percent)
             
             item['img_url'] = None
             if i < len(req_details) and req_details[i]['use_image']:
-                status_box.write(f"🖼️ Sedang membuat gambar untuk soal nomor {i+1}...")
+                status_box.write(f"🖼️ Membuat ilustrasi untuk soal nomor {i+1}...")
                 item['img_url'] = construct_img_url(item.get('image_prompt', 'educational illustration'))
-                time.sleep(1) # Jeda sedikit agar proses terlihat natural
+                time.sleep(1)
         
         st.session_state.hasil_soal = data
-        progress_bar.empty() # Hapus bar setelah selesai
-        status_box.update(label="✅ Soal Berhasil Dibuat!", state="complete", expanded=False)
+        progress_bar.empty()
+        status_box.update(label="✅ Soal Akurat Berhasil Dibuat!", state="complete", expanded=False)
         
     except Exception as e:
-        status_box.update(label="❌ Terjadi kesalahan saat memproses AI", state="error")
+        status_box.update(label="❌ Terjadi kesalahan", state="error")
         st.error(f"Gagal: {e}")
 
 if st.session_state.hasil_soal:
