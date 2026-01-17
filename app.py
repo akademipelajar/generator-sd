@@ -18,11 +18,67 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+
+# --- 3. STYLE CSS ---
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@500;700&family=Poppins:wght@400;600;700&display=swap');
+    
+    [data-testid="stSidebar"] {
+        background-color: #e6f3ff; 
+        border-right: 1px solid #d1e5f0;
+        min-width: 320px !important; 
+        max-width: 320px !important; 
+    }
+    
+    .block-container { padding: 20px !important; }
+
+    h1 { 
+        font-family: 'League Spartan', sans-serif !important; 
+        font-weight: 700; color: #1a1a1a; font-size: 30px !important; margin-bottom: 5px !important;
+    }
+    
+    .subtitle { 
+        font-family: 'Poppins', sans-serif !important; font-size: 18px; color: #666666; margin-top: 0px; margin-bottom: 25px; 
+    }
+    
+    .stSelectbox label, .stTextInput label, .stNumberInput label, .stRadio label, .stCheckbox label {
+        font-family: 'Poppins', sans-serif !important;
+        color: #000000 !important;
+    }
+    
+    .stSelectbox label, .stTextInput label {
+        font-size: 13px !important;
+        font-weight: 800 !important;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .stRadio label {
+        font-size: 15px !important;
+        font-weight: 400 !important;
+        text-transform: none !important;
+    }
+    
+    .stButton>button { 
+        width: 100%; border-radius: 8px; height: 3em; 
+        font-family: 'Poppins', sans-serif; font-weight: 600; 
+        background-color: #2196F3; color: white;
+    }
+    
+    .footer-info {
+        font-family: 'Poppins', sans-serif; font-size: 12px; color: #888;
+        border-top: 1px dashed #ccc; padding-top: 5px; margin-top: 5px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+
 # --- KONFIGURASI MODEL OPENAI ---
 OPENAI_MODEL = "gpt-4o-mini"
 
 
-# --- 2. DATABASE MATERI (DIKEMBALIKAN LENGKAP) ---
+# --- DATABASE MATERI (UTUH SESUAI ASLI) ---
 DATABASE_MATERI = {
     "1 SD": {
         "Matematika": ["Bilangan sampai 10", "Penjumlahan & Pengurangan", "Bentuk Bangun Datar", "Mengukur Panjang Benda", "Mengenal Waktu"],
@@ -63,15 +119,7 @@ DATABASE_MATERI = {
 }
 
 
-# --- 3. STYLE CSS ---
-st.markdown("""
-<style>
-h1 { font-size: 30px !important; }
-</style>
-""", unsafe_allow_html=True)
-
-
-# --- 4. FUNGSI GENERATE GAMBAR ---
+# --- FUNGSI GENERATE GAMBAR ---
 def generate_image(image_prompt):
     try:
         clean_prompt = image_prompt.replace(" ", "%20")
@@ -86,8 +134,9 @@ def generate_image(image_prompt):
         return None
 
 
-# --- 5. FUNGSI GENERATE WORD ---
+# --- FUNGSI GENERATE WORD ---
 def create_docx(data_soal, tipe, mapel, kelas):
+
     doc = Document()
 
     doc.add_heading(f'LATIHAN SOAL {mapel.upper()}', 0)
@@ -123,7 +172,7 @@ def create_docx(data_soal, tipe, mapel, kelas):
     return bio
 
 
-# --- 6. LOGIKA AI OPENAI ---
+# --- LOGIKA AI OPENAI ---
 def generate_soal_openai(api_key, tipe_soal, kelas, mapel, list_request):
 
     client = OpenAI(api_key=api_key)
@@ -158,7 +207,11 @@ def generate_soal_openai(api_key, tipe_soal, kelas, mapel, list_request):
 
     Aturan:
     - Bahasa Indonesia yang mudah dipahami
+    - Jika perlu gambar, isi image_prompt dalam Bahasa Inggris sederhana
     - Output wajib JSON murni
+
+    Format:
+    {json_structure}
     """
 
     try:
@@ -188,15 +241,12 @@ def generate_soal_openai(api_key, tipe_soal, kelas, mapel, list_request):
         return None, str(e)
 
 
-# --- 7. SESSION STATE ---
+# --- SESSION STATE ---
 if 'hasil_soal' not in st.session_state:
     st.session_state.hasil_soal = None
 
-if 'tipe_aktif' not in st.session_state:
-    st.session_state.tipe_aktif = None
 
-
-# --- 8. SIDEBAR ---
+# --- SIDEBAR ---
 with st.sidebar:
 
     st.title("KONFIGURASI UTAMA PANEL GURU & MENTOR")
@@ -214,32 +264,66 @@ with st.sidebar:
     jml_soal = st.selectbox("JUMLAH SOAL", [1, 2, 3, 4, 5])
 
     list_request_user = []
+
     for i in range(jml_soal):
-        topik = st.selectbox("Materi", DATABASE_MATERI[kelas][mapel], key=f"topik_{i}")
-        level = st.selectbox("Level", ["Mudah","Sedang","Sulit"], key=f"lvl_{i}")
-        use_image = st.checkbox("Pakai Gambar?", key=f"img_{i}")
+        st.markdown(f"**# Soal {i+1}**")
+
+        daftar_materi = DATABASE_MATERI.get(kelas, {}).get(mapel, [])
+        topik_selected = st.selectbox(f"MATERI SOAL {i+1}", daftar_materi, key=f"topik_{i}")
+
+        level_selected = st.selectbox(f"LEVEL SOAL {i+1}", ["Mudah", "Sedang", "Sulit (HOTS)"], key=f"lvl_{i}")
+
+        use_image = st.checkbox(f"Pakai Gambar?", key=f"img_{i}")
 
         list_request_user.append({
-            "topik": topik,
-            "level": level,
+            "topik": topik_selected,
+            "level": level_selected,
             "use_image": use_image
         })
 
 
-# --- 9. UI UTAMA ---
+# --- UI UTAMA ---
 st.title("Generator Soal Sekolah Dasar (SD)")
+st.subheader("Berdasarkan Kurikulum Merdeka")
 
-if st.button("Generate Soal"):
-    with st.spinner("Sedang membuat soal..."):
-        hasil, error = generate_soal_openai(api_key, "Pilihan Ganda", kelas, mapel, list_request_user)
+tab_pg, tab_uraian = st.tabs(["📝 Pilihan Ganda", "✍️ Soal Uraian"])
 
-        if hasil:
-            st.session_state.hasil_soal = hasil
+
+with tab_pg:
+    if st.button("🚀 Generate Soal PG", type="primary"):
+        res, err = generate_soal_openai(api_key, "Pilihan Ganda", kelas, mapel, list_request_user)
+
+        if res:
+            st.session_state.hasil_soal = res
+            st.session_state.tipe_aktif = "PG"
         else:
-            st.error(error)
+            st.error(err)
+
+    if st.session_state.hasil_soal and st.session_state.tipe_aktif == "PG":
+        data = st.session_state.hasil_soal
+
+        docx = create_docx(data, "Pilihan Ganda", mapel, kelas)
+        st.download_button("📥 Download Word (.docx)", docx)
 
 
-# --- 10. FOOTER COPYRIGHT (DIKEMBALIKAN PENUH) ---
+with tab_uraian:
+    if st.button("🚀 Generate Soal Uraian", type="primary"):
+        res, err = generate_soal_openai(api_key, "Uraian", kelas, mapel, list_request_user)
+
+        if res:
+            st.session_state.hasil_soal = res
+            st.session_state.tipe_aktif = "URAIAN"
+        else:
+            st.error(err)
+
+    if st.session_state.hasil_soal and st.session_state.tipe_aktif == "URAIAN":
+        data = st.session_state.hasil_soal
+
+        docx = create_docx(data, "Uraian", mapel, kelas)
+        st.download_button("📥 Download Word (.docx)", docx)
+
+
+# --- FOOTER COPYRIGHT (UTUH) ---
 st.markdown("""
 <div style='text-align: center; font-size: 12px; font-weight: bold; margin-top: 30px; padding-top: 15px; border-top: 1px solid #e0e0e0; color: #555; font-family: Poppins;'>
     <p style='margin: 3px 0;'>Aplikasi Generator Soal ini Milik Bimbingan Belajar Digital "Akademi Pelajar"</p>
