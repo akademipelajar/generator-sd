@@ -43,7 +43,7 @@ st.markdown("""
         border-right: 1px solid #d1e3f3;
     }
 
-    /* Radio Button Styling */
+    /* Radio Button Label Styling */
     .stRadio [data-testid="stWidgetLabel"] p {
         font-weight: bold;
         font-size: 16px;
@@ -91,16 +91,16 @@ DATABASE_MATERI = {
     }
 }
 
-# --- 4. FUNGSI LOGIKA GAMBAR ---
+# --- 4. FUNGSI GAMBAR ---
 def construct_img_url(prompt):
     full_prompt = f"{prompt}, simple cartoon vector, educational illustration, white background"
-    return f"https://image.pollinations.ai/prompt/{quote(full_prompt)}?width=512&height=512&nologo=true&seed=88"
+    return f"https://image.pollinations.ai/prompt/{quote(full_prompt)}?width=512&height=512&nologo=true&seed=42"
 
 def safe_download_image(url):
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
         resp = requests.get(url, headers=headers, timeout=10)
-        if resp.status_code == 200 and "image" in resp.headers.get("Content-Type", ""):
+        if resp.status_code == 200:
             return BytesIO(resp.content)
     except:
         return None
@@ -120,10 +120,8 @@ def create_docx(data_soal, mapel, kelas):
         if item.get('img_url'):
             img_data = safe_download_image(item['img_url'])
             if img_data:
-                try:
-                    doc.add_picture(img_data, width=Inches(2.5))
-                except:
-                    pass
+                try: doc.add_picture(img_data, width=Inches(2.5))
+                except: pass
         
         for op in item['opsi']:
             doc.add_paragraph(op)
@@ -154,11 +152,11 @@ with st.sidebar:
 
     kelas_sel = st.selectbox("Pilih Kelas", list(DATABASE_MATERI.keys()))
     mapel_sel = st.selectbox("Pilih Mata Pelajaran", list(DATABASE_MATERI[kelas_sel].keys()))
-    jml_soal = st.slider("Jumlah Soal", 1, 5, 1)
+    jml_soal = st.slider("Jumlah Soal", 1, 5, 2)
 
     req_details = []
     for i in range(jml_soal):
-        with st.expander(f"Soal {i+1}", expanded=True):
+        with st.expander(f"Pengaturan Soal {i+1}", expanded=True):
             topik = st.selectbox("Materi", DATABASE_MATERI[kelas_sel][mapel_sel], key=f"top_{i}")
             level = st.selectbox("Level", ["Mudah", "Sedang", "Sulit"], key=f"lvl_{i}")
             img_on = st.checkbox("Gunakan Gambar", value=True, key=f"img_{i}")
@@ -178,19 +176,42 @@ if 'hasil_soal' not in st.session_state:
 if btn_gen:
     client = OpenAI(api_key=api_key)
     with st.spinner("Sedang meracik soal pilihan ganda..."):
-        prompt = f"""Buatkan {jml_soal} soal pilihan ganda SD {kelas_sel} Mapel {mapel_sel}. 
-        Format JSON list [{{'no':1,'soal':'','opsi':['A.','B.','C.','D.'],'kunci_index':0,'pembahasan':'','image_prompt':'deskripsi dlm bhs inggris'}}]"""
+        # PROMPT DIPERKUAT UNTUK JSON MODE
+        prompt = f"""
+        Buatkan {jml_soal} soal pilihan ganda untuk SD Kelas {kelas_sel} Mata Pelajaran {mapel_sel}.
+        Setiap soal harus memiliki tingkat kesulitan yang berbeda sesuai permintaan.
+        
+        Berikan output dalam format JSON yang valid:
+        {{
+          "soal_list": [
+            {{
+              "no": 1,
+              "soal": "isi pertanyaan",
+              "opsi": ["A. pilihan", "B. pilihan", "C. pilihan", "D. pilihan"],
+              "kunci_index": 0,
+              "pembahasan": "isi pembahasan",
+              "image_prompt": "simple english description for the picture"
+            }}
+          ]
+        }}
+        """
         
         try:
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt}]
+                messages=[
+                    {"role": "system", "content": "Anda adalah asisten pembuat soal ujian yang hanya menjawab dengan format JSON murni."},
+                    {"role": "user", "content": prompt}
+                ],
+                response_format={"type": "json_object"} # PAKSA JSON MODE
             )
-            raw = response.choices[0].message.content.replace("```json","").replace("```","").strip()
-            data = json.loads(raw)
+            
+            res_json = json.loads(response.choices[0].message.content)
+            data = res_json["soal_list"]
             
             for i, item in enumerate(data):
                 item['img_url'] = None
+                # Sinkronkan dengan checkbox di sidebar
                 if i < len(req_details) and req_details[i]['use_image']:
                     item['img_url'] = construct_img_url(item.get('image_prompt', 'educational illustration'))
             
@@ -199,41 +220,38 @@ if btn_gen:
             st.error(f"Gagal memproses AI: {e}")
 
 if st.session_state.hasil_soal:
-    # Tombol Download Word
     docx_file = create_docx(st.session_state.hasil_soal, mapel_sel, kelas_sel)
     st.download_button("📥 Download Word (.docx)", data=docx_file, file_name=f"Soal_{mapel_sel}.docx")
     
     st.write("---")
     
-    # Menampilkan Soal ke Layar secara Interaktif
-    for item in st.session_state.hasil_soal:
+    # LOOP UNTUK MENAMPILKAN SETIAP SOAL
+    for idx, item in enumerate(st.session_state.hasil_soal):
         with st.container(border=True):
             st.markdown(f"### Soal Nomor {item['no']}")
-            st.write(f"**{item['soal']}**")
+            st.markdown(f"**{item['soal']}**")
             
-            # Tampilkan Gambar
             if item.get('img_url'):
                 st.image(item['img_url'], width=350, caption="Ilustrasi Soal")
             
-            # Radio Button Opsi A-D (INTERAKTIF)
-            user_choice = st.radio(
-                "Pilih jawaban Anda:",
+            # RADIO BUTTON INTERAKTIF
+            pilihan = st.radio(
+                "Pilih jawaban yang benar:",
                 item['opsi'],
-                key=f"user_ans_{item['no']}",
-                index=None # Agar tidak terpilih otomatis di awal
+                key=f"ans_{idx}",
+                index=None
             )
             
-            # Feedback jawaban jika sudah dipilih
-            if user_choice:
-                idx_choice = item['opsi'].index(user_choice)
-                if idx_choice == item['kunci_index']:
+            if pilihan:
+                idx_user = item['opsi'].index(pilihan)
+                if idx_user == item['kunci_index']:
                     st.success("✅ Jawaban Anda Benar!")
                 else:
-                    st.error("❌ Jawaban Anda Kurang Tepat.")
+                    st.error("❌ Jawaban Anda Salah.")
             
-            with st.expander("Lihat Kunci & Pembahasan Lengkap"):
-                st.info(f"**Kunci Jawaban:** {item['opsi'][item['kunci_index']]}")
-                st.write(f"**Pembahasan:** {item['pembahasan']}")
+            with st.expander("Kunci & Pembahasan"):
+                st.info(f"Kunci Jawaban: {item['opsi'][item['kunci_index']]}")
+                st.write(item['pembahasan'])
 
 # --- 8. FOOTER DIKUNCI (BOLD) ---
 st.write("---")
