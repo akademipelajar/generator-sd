@@ -65,21 +65,22 @@ st.markdown("""<style>
 .stButton>button { width: 100%; }
 </style>""", unsafe_allow_html=True)
 
-# --- 4. FUNGSI GENERATE GAMBAR (POLLINATIONS) ---
-def generate_image_google(image_prompt):
-    # Menggunakan quote untuk handle spasi dan karakter khusus di URL
-    clean_prompt = quote(image_prompt + " cartoon vector simple educational white background")
-    url = f"https://pollinations.ai/p/{clean_prompt}?width=600&height=600&seed=42&nologo=true"
+# --- 4. FUNGSI GENERATE GAMBAR (DENGAN VALIDASI) ---
+def generate_image_pollinations(image_prompt):
+    # Membersihkan prompt agar URL tidak rusak
+    clean_prompt = quote(image_prompt + " cartoon vector style, simple education, white background")
+    url = f"https://pollinations.ai/p/{clean_prompt}?width=512&height=512&seed=42&nologo=true"
     
     try:
-        response = requests.get(url, timeout=15)
-        if response.status_code == 200:
+        response = requests.get(url, timeout=20)
+        # Validasi: Apakah response benar-benar gambar?
+        if response.status_code == 200 and "image" in response.headers.get("Content-Type", ""):
             return BytesIO(response.content)
         return None
     except:
         return None
 
-# --- 5. FUNGSI GENERATE WORD ---
+# --- 5. FUNGSI GENERATE WORD (FIX UNRECOGNIZED IMAGE ERROR) ---
 def create_docx(data_soal, mapel, kelas):
     doc = Document()
     doc.add_heading(f'LATIHAN SOAL {mapel.upper()}', 0)
@@ -91,9 +92,15 @@ def create_docx(data_soal, mapel, kelas):
         p = doc.add_paragraph()
         p.add_run(f"{idx+1}. {item['soal']}").bold = False
         
+        # PENANGANAN GAMBAR UNTUK WORD
         if item.get('image_data'):
-            # Insert gambar ke Word
-            doc.add_picture(item['image_data'], width=Inches(2.5))
+            try:
+                # PENTING: Kembalikan pointer ke awal sebelum dibaca python-docx
+                item['image_data'].seek(0) 
+                doc.add_picture(item['image_data'], width=Inches(2.5))
+            except Exception as e:
+                # Jika gambar korup, beri catatan di Word alih-alih crash
+                doc.add_paragraph(f"[Gambar tidak dapat dimuat: {item.get('image_prompt', 'Error')}]")
         
         for op in item['opsi']:
             doc.add_paragraph(op, style='List Bullet')
@@ -122,21 +129,21 @@ def generate_soal_multi_granular(api_key, kelas, mapel, list_request):
         req_str += f"- Soal No {i+1}: Materi '{req['topik']}', Level '{req['level']}', Butuh Gambar? {pakai_gambar}\n"
 
     prompt = f"""
-    Buatkan {len(list_request)} soal pilihan ganda untuk siswa {kelas} SD.
+    Buatkan {len(list_request)} soal pilihan ganda untuk siswa {kelas} SD dalam bahasa Indonesia.
     Mata Pelajaran: {mapel}
     
     Detail per nomor:
     {req_str}
 
-    WAJIB memberikan output dalam format JSON murni dengan struktur seperti ini:
+    WAJIB memberikan output JSON murni (tanpa penjelasan tambahan):
     [
       {{
         "no": 1,
-        "soal": "Pertanyaan...",
+        "soal": "...",
         "opsi": ["A. ...", "B. ...", "C. ...", "D. ..."],
         "kunci_index": 0,
-        "pembahasan": "Penjelasan...",
-        "image_prompt": "deskripsi gambar singkat dalam bahasa inggris jika butuh gambar, jika tidak kosongkan"
+        "pembahasan": "...",
+        "image_prompt": "simple english description of the object/scene for image generation"
       }}
     ]
     """
@@ -144,141 +151,99 @@ def generate_soal_multi_granular(api_key, kelas, mapel, list_request):
     try:
         response = client.chat.completions.create(
             model=TEXT_MODEL,
-            messages=[
-                {"role": "system", "content": "Anda adalah guru SD ahli pembuat soal evaluasi yang kreatif dan akurat."},
-                {"role": "user", "content": prompt}
-            ],
-            response_format={ "type": "json_object" } if "gpt-4" in TEXT_MODEL else None
+            messages=[{"role": "user", "content": prompt}]
         )
 
         teks = response.choices[0].message.content
-        # Pembersihan teks jika AI memberikan markdown
         clean = teks.replace("```json", "").replace("```", "").strip()
-        
-        # Load JSON
         data_soal = json.loads(clean)
-        if isinstance(data_soal, dict) and "soal" in data_soal: # Handle jika AI return satu object berisi list
-             data_soal = data_soal.get("soal", [data_soal])
-        elif isinstance(data_soal, dict):
-             # Jika JSON dibungkus key lain
-             key = list(data_soal.keys())[0]
-             data_soal = data_soal[key]
 
-        # Generate Gambar jika diminta
+        # Proses download gambar satu per satu
         for i, item in enumerate(data_soal):
             item['image_data'] = None
-            # Cek di list_request apakah nomor ini butuh gambar
+            # Hanya download jika user mencentang 'use_image' untuk nomor tersebut
             if i < len(list_request) and list_request[i]['use_image']:
-                if item.get('image_prompt'):
-                    img_bytes = generate_image_google(item['image_prompt'])
-                    item['image_data'] = img_bytes
+                prompt_gambar = item.get('image_prompt', 'school object')
+                img_stream = generate_image_pollinations(prompt_gambar)
+                if img_stream:
+                    item['image_data'] = img_stream
 
         return data_soal, None
-
     except Exception as e:
         return None, str(e)
 
-# --- 7. SESSION STATE (PENTING AGAR DATA TIDAK HILANG) ---
+# --- 7. SESSION STATE ---
 if 'hasil_soal' not in st.session_state:
     st.session_state.hasil_soal = None
-if 'list_req' not in st.session_state:
-    st.session_state.list_req = []
 
 # --- 8. SIDEBAR ---
 with st.sidebar:
-    if os.path.exists("logo.png"):
-        st.image("logo.png", width=150)
+    st.markdown("### ⚙️ KONFIGURASI")
     
-    st.markdown("### ⚙️ KONFIGURASI PANEL")
-
-    # Cek API Key
     if "OPENAI_API_KEY" in st.secrets:
         api_key = st.secrets["OPENAI_API_KEY"]
     else:
-        api_key = st.text_input("Masukkan OpenAI API Key", type="password")
-        if not api_key:
-            st.warning("Masukkan API Key untuk memulai")
-            st.stop()
+        api_key = st.text_input("OpenAI API Key", type="password")
+        if not api_key: st.stop()
 
-    kelas_sel = st.selectbox("PILIH KELAS", list(DATABASE_MATERI.keys()))
-    mapel_sel = st.selectbox("MATA PELAJARAN", list(DATABASE_MATERI[kelas_sel].keys()))
-    jml_soal = st.slider("JUMLAH SOAL", 1, 5, 2)
+    kelas_sel = st.selectbox("KELAS", list(DATABASE_MATERI.keys()))
+    mapel_sel = st.selectbox("MAPEL", list(DATABASE_MATERI[kelas_sel].keys()))
+    jml_soal = st.slider("JUMLAH", 1, 5, 2)
 
     st.divider()
-    
-    list_request_user = []
+    list_req = []
     for i in range(jml_soal):
-        with st.expander(f"Pengaturan Soal {i+1}", expanded=(i==0)):
-            topik = st.selectbox(f"Materi", DATABASE_MATERI[kelas_sel][mapel_sel], key=f"topik_{i}")
-            level = st.select_slider(f"Kesulitan", ["Mudah", "Sedang", "Sulit"], value="Sedang", key=f"lvl_{i}")
-            img = st.checkbox("Gunakan Gambar ilustrasi?", key=f"img_{i}")
-            list_request_user.append({"topik": topik, "level": level, "use_image": img})
+        with st.expander(f"Soal {i+1}"):
+            topik = st.selectbox("Materi", DATABASE_MATERI[kelas_sel][mapel_sel], key=f"t_{i}")
+            lvl = st.selectbox("Level", ["Mudah", "Sedang", "Sulit"], index=1, key=f"l_{i}")
+            img = st.checkbox("Pakai Gambar", key=f"i_{i}")
+            list_req.append({"topik": topik, "level": lvl, "use_image": img})
 
-    btn_generate = st.button("🚀 GENERATE SOAL SEKARANG", type="primary")
+    btn = st.button("🚀 GENERATE", type="primary")
 
-# --- 9. UI UTAMA & LOGIKA TAMPILAN ---
-st.title("📝 Generator Soal SD Digital")
-st.caption(f"Menggunakan Model: {TEXT_MODEL} | Pollinations AI Image")
+# --- 9. UI UTAMA ---
+st.title("Generator Soal SD")
 
-if btn_generate:
-    with st.spinner("Sedang memproses soal dan gambar..."):
-        res, err = generate_soal_multi_granular(api_key, kelas_sel, mapel_sel, list_request_user)
+if btn:
+    with st.spinner("Sedang meramu soal..."):
+        res, err = generate_soal_multi_granular(api_key, kelas_sel, mapel_sel, list_req)
         if res:
             st.session_state.hasil_soal = res
-            st.session_state.list_req = list_request_user # simpan info tambahan
-            st.success("Berhasil membuat soal!")
         else:
-            st.error(f"Gagal generate: {err}")
+            st.error(f"Error: {err}")
 
-# Tampilkan Hasil jika sudah ada di session state
 if st.session_state.hasil_soal:
+    # Siapkan Download Button di Atas
+    docx_file = create_docx(st.session_state.hasil_soal, mapel_sel, kelas_sel)
+    st.download_button(
+        label="📥 Download Soal (Word)",
+        data=docx_file,
+        file_name=f"Soal_{mapel_sel}_{kelas_sel}.docx",
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+    
     st.divider()
     
-    # Kolom untuk tombol download di bagian atas pratinjau
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        st.subheader("🔍 Pratinjau Soal")
-    with col2:
-        # Proses file Word
-        docx_data = create_docx(st.session_state.hasil_soal, mapel_sel, kelas_sel)
-        st.download_button(
-            label="📥 Download Word (.docx)",
-            data=docx_data,
-            file_name=f"Soal_{mapel_sel}_{kelas_sel}.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            help="Klik untuk mendownload file dalam format Microsoft Word"
-        )
-
-    # Loop untuk menampilkan isi soal ke layar
+    # Pratinjau Soal di Layar
     for item in st.session_state.hasil_soal:
         with st.container(border=True):
-            st.markdown(f"#### Soal No {item['no']}")
+            st.markdown(f"**Soal No {item['no']}**")
             st.write(item['soal'])
             
-            # Tampilkan gambar jika ada
             if item.get('image_data'):
-                # Perlu reset pointer stream jika dibaca berulang kali
-                item['image_data'].seek(0)
-                st.image(item['image_data'], width=300, caption=f"Ilustrasi Soal {item['no']}")
+                try:
+                    # Reset pointer sebelum ditampilkan di Streamlit
+                    item['image_data'].seek(0)
+                    st.image(item['image_data'], width=300)
+                except:
+                    st.warning("Gambar gagal ditampilkan di pratinjau.")
             
-            # Tampilkan Opsi
-            cols = st.columns(2)
-            for i, opsi in enumerate(item['opsi']):
-                cols[i % 2].info(opsi)
+            for op in item['opsi']:
+                st.write(op)
             
-            with st.expander("Kunci Jawaban & Pembahasan"):
-                st.success(f"**Kunci:** {item['opsi'][item['kunci_index']]}")
-                st.write(f"**Pembahasan:** {item['pembahasan']}")
+            with st.expander("Kunci & Pembahasan"):
+                st.info(f"Kunci: {item['opsi'][item['kunci_index']]}")
+                st.write(item['pembahasan'])
 
-else:
-    # Tampilan awal jika belum generate
-    st.info("Silakan atur konfigurasi di sidebar kiri dan klik tombol 'Generate Soal'.")
-
-# --- 10. FOOTER ---
-st.markdown("---")
-st.markdown("""
-<div style='text-align: center; color: gray; font-size: 11px;'>
-    <p>© 2026 Akademi Pelajar - Sistem Generator Soal Otomatis</p>
-    <p>Dilarang menyebarluaskan tanpa izin tertulis.</p>
-</div>
-""", unsafe_allow_html=True)
+# FOOTER
+st.markdown("<br><hr><center><small>Akademi Pelajar © 2024</small></center>", unsafe_allow_html=True)
