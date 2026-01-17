@@ -4,7 +4,7 @@ import requests
 import os
 import time
 import matplotlib
-# Backend Agg untuk stabilitas server
+# Backend Agg agar stabil di server Streamlit
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from io import BytesIO
@@ -70,7 +70,7 @@ DATABASE_MATERI = {
     }
 }
 
-# --- 4. FUNGSI VISUAL AMAN ---
+# --- 4. FUNGSI VISUAL ---
 def render_accurate_chart(chart_data, title="Data Matematika"):
     plt.close('all')
     fig, ax = plt.subplots(figsize=(8, 4))
@@ -96,7 +96,38 @@ def render_accurate_chart(chart_data, title="Data Matematika"):
 def construct_img_url(prompt):
     return f"https://image.pollinations.ai/prompt/{quote(prompt + ', high quality educational vector, white background')}?width=600&height=400&nologo=true&seed={int(time.time())}"
 
-# --- 5. FUNGSI WORD ---
+def safe_download_image(url):
+    try:
+        headers = {"User-Agent": "Mozilla/5.0"}
+        resp = requests.get(url, headers=headers, timeout=15)
+        if resp.status_code == 200: return BytesIO(resp.content)
+    except: return None
+    return None
+
+# --- 5. FUNGSI EKSTRAKSI OPSI (PENTING) ---
+def get_clean_options(item):
+    """Mencari kunci opsi yang mungkin dikembalikan AI dan membersihkannya"""
+    # Cari di berbagai kunci kemungkinan
+    opsi_raw = item.get('opsi') or item.get('pilihan') or item.get('options') or item.get('choices') or []
+    
+    labels = ['A', 'B', 'C', 'D']
+    clean = []
+    for i, text in enumerate(opsi_raw):
+        if i >= 4: break
+        t = str(text).strip()
+        # Jika teks sudah diawali label, biarkan. Jika tidak, tambahkan.
+        if t and not t.startswith(tuple(labels)):
+            t = f"{labels[i]}. {t}"
+        elif not t:
+            t = f"{labels[i]}. [Pilihan tidak tersedia]"
+        clean.append(t)
+    
+    # Fallback jika list kosong
+    if not clean:
+        clean = [f"{lbl}. [Gagal memuat pilihan]" for lbl in labels]
+    return clean
+
+# --- 6. FUNGSI WORD ---
 def create_docx(data_soal, mapel, kelas):
     doc = Document()
     doc.add_heading(f'LATIHAN SOAL {mapel.upper()}', 0)
@@ -106,18 +137,19 @@ def create_docx(data_soal, mapel, kelas):
         p.add_run(f"{idx+1}. {item.get('soal','')}").bold = True
         if item.get('img_bytes'):
             doc.add_picture(BytesIO(item['img_bytes']), width=Inches(3.5))
-        labels = ['A', 'B', 'C', 'D']
-        opsi = item.get('opsi', [])
-        for i, op in enumerate(opsi):
-            prefix = f"{labels[i]}. "
-            doc.add_paragraph(op if op.startswith(tuple(labels)) else f"{prefix}{op}")
-        doc.add_paragraph(f"Materi : {item.get('materi','')} | Level : {item.get('level','')}")
+        
+        clean_opsi = get_clean_options(item)
+        for op in clean_opsi:
+            doc.add_paragraph(op)
+            
+        meta = doc.add_paragraph(f"Materi : {item.get('materi','')} | Level : {item.get('level','')}")
+        meta.italic = True
     bio = BytesIO()
     doc.save(bio)
     bio.seek(0)
     return bio
 
-# --- 6. SESSION STATE & SIDEBAR ---
+# --- 7. SESSION STATE & SIDEBAR ---
 if 'hasil_soal' not in st.session_state: st.session_state.hasil_soal = None
 if 'reset_counter' not in st.session_state: st.session_state.reset_counter = 0
 
@@ -147,7 +179,7 @@ with st.sidebar:
         st.session_state.reset_counter += 1
         st.rerun()
 
-# --- 7. MAIN PAGE ---
+# --- 8. MAIN PAGE ---
 st.markdown('<div class="header-title">Generator Soal SD</div>', unsafe_allow_html=True)
 st.markdown('<div class="header-sub">Berdasarkan Kurikulum Merdeka</div>', unsafe_allow_html=True)
 st.markdown('<div class="warning-text">⚠️ Batasan: Hanya 1 soal yang bisa menggunakan gambar/diagram per sesi agar akurasi tetap terjaga.</div>', unsafe_allow_html=True)
@@ -158,22 +190,24 @@ if btn_gen:
     status_box = st.status("✅ Soal Dalam Proses Pembuatan, Silahkan Ditunggu.", expanded=True)
     summary = "\n".join([f"- Soal {i+1}: {r['topik']} ({r['level']})" for i, r in enumerate(req_details)])
     
-    # SYSTEM PROMPT DIPERBAIKI DENGAN KATA "json" (WAJIB)
     system_prompt = """Anda adalah Guru Matematika Senior & Pakar Evaluasi Kurikulum Merdeka Kemdikbud RI. 
-    Tugas Anda adalah membuat soal bank soal SD. Anda wajib memberikan jawaban dalam format json.
+    Tugas Anda adalah membuat soal bank soal SD berkualitas tinggi. Anda wajib memberikan jawaban dalam format json murni.
     
-    ATURAN KETAT:
+    ATURAN KETAT MATERI:
     1. Jika materi terkait 'DATA' (Diagram Batang/Gambar/Lingkaran), Anda WAJIB memberikan key 'chart_data' { "Kategori": angka }.
     2. 'chart_data' harus berupa flat dictionary. Angka di soal HARUS sinkron dengan angka di chart_data.
-    3. Output harus berupa objek json murni dengan key 'soal_list'.
-    4. Seluruh teks wajib Bahasa Indonesia formal. Opsi A-D wajib diawali label A. B. C. D."""
+    
+    ATURAN KETAT FORMAT:
+    1. Output wajib json key 'soal_list'.
+    2. Tiap soal WAJIB memiliki key 'soal', 'opsi' (berisi 4 string jawaban lengkap), 'kunci_index' (0-3), dan 'pembahasan'.
+    3. Seluruh teks wajib Bahasa Indonesia formal. Pilihan jawaban harus edukatif dan menantang sesuai level."""
 
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_prompt}, 
-                {"role": "user", "content": f"Tolong buatkan soal dalam format json untuk Mapel: {mapel_sel}, Kelas: {kelas_sel}\n{summary}"}
+                {"role": "user", "content": f"Tolong buatkan soal pendidikan dalam format json untuk Mapel: {mapel_sel}, Kelas: {kelas_sel}\n{summary}"}
             ],
             response_format={"type": "json_object"}
         )
@@ -185,7 +219,7 @@ if btn_gen:
                 item['img_bytes'] = None
                 if req_details[i]['use_image']:
                     if item.get('chart_data'):
-                        status_box.write(f"📊 Merender Grafik Akurat untuk {item['materi']}...")
+                        status_box.write(f"📊 Merender Diagram Akurat untuk {item['materi']}...")
                         item['img_bytes'] = render_accurate_chart(item['chart_data'], title=f"Visualisasi {item['materi']}").getvalue()
                     else:
                         status_box.write(f"🖼️ Menyiapkan Ilustrasi Edukatif...")
@@ -198,18 +232,22 @@ if btn_gen:
         status_box.update(label="❌ Terjadi kesalahan", state="error")
         st.error(f"Gagal: {e}")
 
-# --- 8. TAMPILAN HASIL (DIKUNCI) ---
+# --- 9. TAMPILAN HASIL (DIKUNCI) ---
 if st.session_state.hasil_soal:
     st.download_button("📥 Download Word", create_docx(st.session_state.hasil_soal, mapel_sel, kelas_sel), f"Soal_{mapel_sel}.docx")
     for idx, item in enumerate(st.session_state.hasil_soal):
         with st.container(border=True):
             st.markdown(f"### Soal {idx+1}\n**{item.get('soal','')}**")
             if item.get('img_bytes'): st.image(item['img_bytes'], width=500)
-            labels = ['A', 'B', 'C', 'D']
-            opsi = item.get('opsi', [])
-            clean_opsi = [o if o.startswith(labels[i]) else f"{labels[i]}. {o}" for i, o in enumerate(opsi)]
+            
+            # AMBIL OPSI DENGAN VALIDATOR
+            clean_opsi = get_clean_options(item)
+            
             pilih = st.radio("Pilih Jawaban:", clean_opsi, key=f"ans_{idx}_{suffix}", index=None)
+            
+            # LABEL MATERI & LEVEL (BOLD-ITALIC)
             st.markdown(f"<div class='metadata-text'>Materi : {item.get('materi','')} | Level : {item.get('level','')}</div>", unsafe_allow_html=True)
+            
             if pilih:
                 if clean_opsi.index(pilih) == item.get('kunci_index', 0): st.success("✅ Jawaban Anda Benar!")
                 else: st.error("❌ Jawaban Anda Salah.")
