@@ -72,7 +72,6 @@ DATABASE_MATERI = {
 
 # --- 4. FUNGSI VISUAL AMAN ---
 def render_accurate_chart(chart_data, title="Data Matematika"):
-    """Fungsi khusus merender data eksak (Batang/Lingkaran)"""
     plt.close('all')
     fig, ax = plt.subplots(figsize=(8, 4))
     categories = [str(k) for k in chart_data.keys()]
@@ -81,7 +80,6 @@ def render_accurate_chart(chart_data, title="Data Matematika"):
         try: values.append(float(v))
         except: values.append(0.0)
     
-    # Deteksi jika data hanya satu atau tipe khusus, tetap gunakan batang
     bars = ax.bar(categories, values, color=plt.cm.Paired(range(len(categories))), edgecolor='black')
     ax.set_title(title, fontsize=12, fontweight='bold')
     ax.set_ylabel("Jumlah/Nilai")
@@ -160,20 +158,23 @@ if btn_gen:
     status_box = st.status("✅ Soal Dalam Proses Pembuatan, Silahkan Ditunggu.", expanded=True)
     summary = "\n".join([f"- Soal {i+1}: {r['topik']} ({r['level']})" for i, r in enumerate(req_details)])
     
-    # PERSONA SENIOR MASTER TEACHER (SCREENING LOGIC)
-    system_prompt = """Anda adalah Guru Matematika Senior & Pakar Evaluasi Kurikulum Merdeka.
-    Tugas Anda membuat soal yang logis dan sinkron antara gambar dan teks.
+    # SYSTEM PROMPT DIPERBAIKI DENGAN KATA "json" (WAJIB)
+    system_prompt = """Anda adalah Guru Matematika Senior & Pakar Evaluasi Kurikulum Merdeka Kemdikbud RI. 
+    Tugas Anda adalah membuat soal bank soal SD. Anda wajib memberikan jawaban dalam format json.
     
-    ATURAN KETAT SCREENING:
-    1. Jika materi terkait 'DATA' (Diagram Batang, Gambar, Lingkaran, Bilangan, Skala), Anda WAJIB memberikan key 'chart_data' { "Kategori": angka }.
-    2. Jika materi terkait 'GEOMETRI' (Bangun Datar/Ruang), pertanyaan harus presisi.
-    3. 'chart_data' harus flat dictionary. Angka di soal HARUS sinkron dengan angka di chart_data.
-    4. Opsi A-D wajib Bahasa Indonesia formal. Kunci jawaban wajib akurat."""
+    ATURAN KETAT:
+    1. Jika materi terkait 'DATA' (Diagram Batang/Gambar/Lingkaran), Anda WAJIB memberikan key 'chart_data' { "Kategori": angka }.
+    2. 'chart_data' harus berupa flat dictionary. Angka di soal HARUS sinkron dengan angka di chart_data.
+    3. Output harus berupa objek json murni dengan key 'soal_list'.
+    4. Seluruh teks wajib Bahasa Indonesia formal. Opsi A-D wajib diawali label A. B. C. D."""
 
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": f"Mapel: {mapel_sel}, Kelas: {kelas_sel}\n{summary}"}],
+            messages=[
+                {"role": "system", "content": system_prompt}, 
+                {"role": "user", "content": f"Tolong buatkan soal dalam format json untuk Mapel: {mapel_sel}, Kelas: {kelas_sel}\n{summary}"}
+            ],
             response_format={"type": "json_object"}
         )
         data = json.loads(response.choices[0].message.content).get("soal_list", [])
@@ -183,7 +184,6 @@ if btn_gen:
                 item['materi'], item['level'] = req_details[i]['topik'], req_details[i]['level']
                 item['img_bytes'] = None
                 if req_details[i]['use_image']:
-                    # Logika Screening: Jika AI memberikan chart_data, gunakan render Matplotlib
                     if item.get('chart_data'):
                         status_box.write(f"📊 Merender Grafik Akurat untuk {item['materi']}...")
                         item['img_bytes'] = render_accurate_chart(item['chart_data'], title=f"Visualisasi {item['materi']}").getvalue()
@@ -194,7 +194,9 @@ if btn_gen:
             pb.progress(int(((i + 1) / len(data)) * 100))
         st.session_state.hasil_soal = data
         status_box.update(label="✅ Selesai!", state="complete", expanded=False)
-    except Exception as e: st.error(f"Gagal: {e}")
+    except Exception as e: 
+        status_box.update(label="❌ Terjadi kesalahan", state="error")
+        st.error(f"Gagal: {e}")
 
 # --- 8. TAMPILAN HASIL (DIKUNCI) ---
 if st.session_state.hasil_soal:
