@@ -25,7 +25,7 @@ st.markdown("""
     .warning-text { font-size: 13px; color: #d9534f; font-weight: bold; margin-bottom: 20px; }
     [data-testid="stSidebar"] { background: linear-gradient(180deg, #e6f3ff 0%, #ffffff 100%); border-right: 1px solid #d1e3f3; }
     .stRadio [data-testid="stWidgetLabel"] p { font-weight: bold; font-size: 16px; color: #1E1E1E; }
-    .metadata-text { font-size: 12px; font-style: italic; font-family: 'Poppins', sans-serif; font-weight: bold; color: #555; margin-top: 10px; margin-bottom: 10px;}
+    .metadata-text { font-size: 12px; font-style: italic; font-family: 'Poppins', sans-serif; font-weight: bold; color: #555; margin-top: 10px; margin-bottom: 15px;}
     div.stButton > button { width: 100%; }
 </style>
 """, unsafe_allow_html=True)
@@ -71,31 +71,32 @@ DATABASE_MATERI = {
 }
 
 # --- 4. FUNGSI VISUAL AMAN ---
-def render_bar_chart(chart_data, title="Diagram Batang"):
+def render_accurate_chart(chart_data, title="Data Matematika"):
+    """Fungsi khusus merender data eksak (Batang/Lingkaran)"""
     plt.close('all')
-    fig, ax = plt.subplots(figsize=(7, 4))
-    categories = []
+    fig, ax = plt.subplots(figsize=(8, 4))
+    categories = [str(k) for k in chart_data.keys()]
     values = []
-    for k, v in chart_data.items():
-        categories.append(str(k))
-        try:
-            if isinstance(v, dict): values.append(float(list(v.values())[0]))
-            else: values.append(float(v))
+    for v in chart_data.values():
+        try: values.append(float(v))
         except: values.append(0.0)
+    
+    # Deteksi jika data hanya satu atau tipe khusus, tetap gunakan batang
     bars = ax.bar(categories, values, color=plt.cm.Paired(range(len(categories))), edgecolor='black')
     ax.set_title(title, fontsize=12, fontweight='bold')
-    ax.set_ylabel("Jumlah")
-    ax.grid(axis='y', linestyle='--', alpha=0.7)
+    ax.set_ylabel("Jumlah/Nilai")
+    ax.grid(axis='y', linestyle='--', alpha=0.6)
     for bar in bars:
         yval = bar.get_height()
         ax.text(bar.get_x() + bar.get_width()/2, yval + 0.1, f'{int(yval)}', ha='center', va='bottom', fontweight='bold')
+    
     buf = BytesIO()
-    plt.savefig(buf, format='png', bbox_inches='tight')
+    plt.savefig(buf, format='png', bbox_inches='tight', dpi=100)
     plt.close(fig)
     return buf
 
 def construct_img_url(prompt):
-    return f"https://image.pollinations.ai/prompt/{quote(prompt + ', simple educational illustration, white background')}?width=600&height=400&nologo=true&seed={int(time.time())}"
+    return f"https://image.pollinations.ai/prompt/{quote(prompt + ', high quality educational vector, white background')}?width=600&height=400&nologo=true&seed={int(time.time())}"
 
 # --- 5. FUNGSI WORD ---
 def create_docx(data_soal, mapel, kelas):
@@ -110,7 +111,6 @@ def create_docx(data_soal, mapel, kelas):
         labels = ['A', 'B', 'C', 'D']
         opsi = item.get('opsi', [])
         for i, op in enumerate(opsi):
-            if i >= 4: break
             prefix = f"{labels[i]}. "
             doc.add_paragraph(op if op.startswith(tuple(labels)) else f"{prefix}{op}")
         doc.add_paragraph(f"Materi : {item.get('materi','')} | Level : {item.get('level','')}")
@@ -159,12 +159,17 @@ if btn_gen:
     client = OpenAI(api_key=api_key)
     status_box = st.status("✅ Soal Dalam Proses Pembuatan, Silahkan Ditunggu.", expanded=True)
     summary = "\n".join([f"- Soal {i+1}: {r['topik']} ({r['level']})" for i, r in enumerate(req_details)])
-    system_prompt = """Anda adalah Pakar Kurikulum Merdeka Kemdikbud RI. 
-    WAJIB: Jika materi diagram (Batang/Data), buat soal tipe 'Membaca Data' dari grafik.
-    ATURAN KETAT JSON:
-    1. 'chart_data' WAJIB flat dict { "Kategori": angka }.
-    2. 'soal_list' HARUS berisi key: 'soal', 'opsi' (array 4 string), 'kunci_index', 'pembahasan'.
-    3. Seluruh teks Bahasa Indonesia formal."""
+    
+    # PERSONA SENIOR MASTER TEACHER (SCREENING LOGIC)
+    system_prompt = """Anda adalah Guru Matematika Senior & Pakar Evaluasi Kurikulum Merdeka.
+    Tugas Anda membuat soal yang logis dan sinkron antara gambar dan teks.
+    
+    ATURAN KETAT SCREENING:
+    1. Jika materi terkait 'DATA' (Diagram Batang, Gambar, Lingkaran, Bilangan, Skala), Anda WAJIB memberikan key 'chart_data' { "Kategori": angka }.
+    2. Jika materi terkait 'GEOMETRI' (Bangun Datar/Ruang), pertanyaan harus presisi.
+    3. 'chart_data' harus flat dictionary. Angka di soal HARUS sinkron dengan angka di chart_data.
+    4. Opsi A-D wajib Bahasa Indonesia formal. Kunci jawaban wajib akurat."""
+
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
@@ -175,43 +180,37 @@ if btn_gen:
         pb = st.progress(0)
         for i, item in enumerate(data):
             if i < len(req_details):
-                item['materi'] = req_details[i]['topik']
-                item['level'] = req_details[i]['level']
+                item['materi'], item['level'] = req_details[i]['topik'], req_details[i]['level']
                 item['img_bytes'] = None
                 if req_details[i]['use_image']:
+                    # Logika Screening: Jika AI memberikan chart_data, gunakan render Matplotlib
                     if item.get('chart_data'):
-                        status_box.write(f"📊 Merender Diagram Akurat...")
-                        item['img_bytes'] = render_bar_chart(item['chart_data'], title=f"Data {item['materi']}").getvalue()
+                        status_box.write(f"📊 Merender Grafik Akurat untuk {item['materi']}...")
+                        item['img_bytes'] = render_accurate_chart(item['chart_data'], title=f"Visualisasi {item['materi']}").getvalue()
                     else:
-                        status_box.write(f"🖼️ Menyiapkan Ilustrasi...")
-                        resp = requests.get(construct_img_url(item.get('image_prompt', 'object')))
+                        status_box.write(f"🖼️ Menyiapkan Ilustrasi Edukatif...")
+                        resp = requests.get(construct_img_url(item.get('image_prompt', 'educational illustration')))
                         if resp.status_code == 200: item['img_bytes'] = resp.content
             pb.progress(int(((i + 1) / len(data)) * 100))
         st.session_state.hasil_soal = data
         status_box.update(label="✅ Selesai!", state="complete", expanded=False)
     except Exception as e: st.error(f"Gagal: {e}")
 
-# --- 8. TAMPILAN HASIL ---
+# --- 8. TAMPILAN HASIL (DIKUNCI) ---
 if st.session_state.hasil_soal:
     st.download_button("📥 Download Word", create_docx(st.session_state.hasil_soal, mapel_sel, kelas_sel), f"Soal_{mapel_sel}.docx")
     for idx, item in enumerate(st.session_state.hasil_soal):
         with st.container(border=True):
             st.markdown(f"### Soal {idx+1}\n**{item.get('soal','')}**")
             if item.get('img_bytes'): st.image(item['img_bytes'], width=500)
-            
-            # PROTEKSI OPSI A-D
-            opsi = item.get('opsi', [])
             labels = ['A', 'B', 'C', 'D']
+            opsi = item.get('opsi', [])
             clean_opsi = [o if o.startswith(labels[i]) else f"{labels[i]}. {o}" for i, o in enumerate(opsi)]
-            
-            if clean_opsi:
-                pilih = st.radio("Pilih Jawaban:", clean_opsi, key=f"ans_{idx}_{suffix}", index=None)
-                # LABEL MATERI & LEVEL (BOLD-ITALIC)
-                st.markdown(f"<div class='metadata-text'>Materi : {item.get('materi','')} | Level : {item.get('level','')}</div>", unsafe_allow_html=True)
-                
-                if pilih:
-                    if clean_opsi.index(pilih) == item.get('kunci_index', 0): st.success("✅ Jawaban Anda Benar!")
-                    else: st.error("❌ Jawaban Anda Salah.")
+            pilih = st.radio("Pilih Jawaban:", clean_opsi, key=f"ans_{idx}_{suffix}", index=None)
+            st.markdown(f"<div class='metadata-text'>Materi : {item.get('materi','')} | Level : {item.get('level','')}</div>", unsafe_allow_html=True)
+            if pilih:
+                if clean_opsi.index(pilih) == item.get('kunci_index', 0): st.success("✅ Jawaban Anda Benar!")
+                else: st.error("❌ Jawaban Anda Salah.")
             with st.expander("Kunci & Pembahasan"): st.write(item.get('pembahasan',''))
 
 st.write("---")
