@@ -15,26 +15,39 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- 2. STYLE CSS (Font Custom & UI) ---
+# --- 2. STYLE CSS (DIKUNCI: Header, Sidebar Gradient, Font) ---
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@700&family=Poppins:ital,wght@1,700&display=swap');
 
+    /* Header Styling */
     .header-title {
         font-family: 'League Spartan', sans-serif;
         font-size: 32px;
         font-weight: bold;
         line-height: 1.2;
+        color: #1E1E1E;
     }
     .header-sub {
         font-family: 'Poppins', sans-serif;
         font-size: 18px;
         font-weight: bold;
         font-style: italic;
-        color: #333;
+        color: #444;
         margin-bottom: 20px;
     }
-    [data-testid="stSidebar"] { background-color: #f0f7ff; }
+
+    /* Sidebar Gradient Background */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #e6f3ff 0%, #ffffff 100%);
+        border-right: 1px solid #d1e3f3;
+    }
+
+    /* Radio Button Styling */
+    .stRadio [data-testid="stWidgetLabel"] p {
+        font-weight: bold;
+        font-size: 16px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -78,15 +91,12 @@ DATABASE_MATERI = {
     }
 }
 
-# --- 4. FUNGSI GAMBAR ---
+# --- 4. FUNGSI LOGIKA GAMBAR ---
 def construct_img_url(prompt):
-    """Membuat URL gambar Pollinations yang valid"""
-    # Tambahkan style agar konsisten & edukatif
     full_prompt = f"{prompt}, simple cartoon vector, educational illustration, white background"
-    return f"https://image.pollinations.ai/prompt/{quote(full_prompt)}?width=512&height=512&nologo=true&seed=42"
+    return f"https://image.pollinations.ai/prompt/{quote(full_prompt)}?width=512&height=512&nologo=true&seed=88"
 
 def safe_download_image(url):
-    """Mendownload gambar untuk Word dengan validasi format"""
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
         resp = requests.get(url, headers=headers, timeout=10)
@@ -101,20 +111,19 @@ def create_docx(data_soal, mapel, kelas):
     doc = Document()
     doc.add_heading(f'LATIHAN SOAL {mapel.upper()}', 0)
     doc.add_paragraph(f'Kelas: {kelas}')
-
     doc.add_heading('A. SOAL', level=1)
+    
     for idx, item in enumerate(data_soal):
         p = doc.add_paragraph()
         p.add_run(f"{idx+1}. {item['soal']}").bold = True
         
-        # Masukkan Gambar ke Word jika ada
         if item.get('img_url'):
             img_data = safe_download_image(item['img_url'])
             if img_data:
                 try:
                     doc.add_picture(img_data, width=Inches(2.5))
                 except:
-                    pass # Lewati jika format tetap tidak dikenal oleh docx
+                    pass
         
         for op in item['opsi']:
             doc.add_paragraph(op)
@@ -129,7 +138,7 @@ def create_docx(data_soal, mapel, kelas):
     bio.seek(0)
     return bio
 
-# --- 6. SIDEBAR (LOGO DIKUNCI) ---
+# --- 6. SIDEBAR (LOGO & CSS DIKUNCI) ---
 with st.sidebar:
     if os.path.exists("logo.png"):
         c1, c2, c3 = st.columns([1, 2, 1])
@@ -168,10 +177,9 @@ if 'hasil_soal' not in st.session_state:
 
 if btn_gen:
     client = OpenAI(api_key=api_key)
-    with st.spinner("Sedang meramu soal..."):
+    with st.spinner("Sedang meracik soal pilihan ganda..."):
         prompt = f"""Buatkan {jml_soal} soal pilihan ganda SD {kelas_sel} Mapel {mapel_sel}. 
-        Output WAJIB JSON murni (list of objects) dengan field: 
-        'no', 'soal', 'opsi' (isi 4 string), 'kunci_index', 'pembahasan', 'image_prompt' (deskripsi dlm bhs inggris)."""
+        Format JSON list [{{'no':1,'soal':'','opsi':['A.','B.','C.','D.'],'kunci_index':0,'pembahasan':'','image_prompt':'deskripsi dlm bhs inggris'}}]"""
         
         try:
             response = client.chat.completions.create(
@@ -181,11 +189,10 @@ if btn_gen:
             raw = response.choices[0].message.content.replace("```json","").replace("```","").strip()
             data = json.loads(raw)
             
-            # Pasangkan URL gambar
             for i, item in enumerate(data):
                 item['img_url'] = None
-                if req_details[i]['use_image']:
-                    item['img_url'] = construct_img_url(item.get('image_prompt', 'simple educational object'))
+                if i < len(req_details) and req_details[i]['use_image']:
+                    item['img_url'] = construct_img_url(item.get('image_prompt', 'educational illustration'))
             
             st.session_state.hasil_soal = data
         except Exception as e:
@@ -198,28 +205,42 @@ if st.session_state.hasil_soal:
     
     st.write("---")
     
-    # Menampilkan Soal ke Layar
+    # Menampilkan Soal ke Layar secara Interaktif
     for item in st.session_state.hasil_soal:
         with st.container(border=True):
             st.markdown(f"### Soal Nomor {item['no']}")
-            st.write(item['soal'])
+            st.write(f"**{item['soal']}**")
             
-            # Tampilkan Gambar (Langsung via URL agar stabil di Web)
+            # Tampilkan Gambar
             if item.get('img_url'):
                 st.image(item['img_url'], width=350, caption="Ilustrasi Soal")
             
-            for op in item['opsi']:
-                st.write(op)
+            # Radio Button Opsi A-D (INTERAKTIF)
+            user_choice = st.radio(
+                "Pilih jawaban Anda:",
+                item['opsi'],
+                key=f"user_ans_{item['no']}",
+                index=None # Agar tidak terpilih otomatis di awal
+            )
             
-            with st.expander("Kunci & Pembahasan"):
-                st.success(item['pembahasan'])
+            # Feedback jawaban jika sudah dipilih
+            if user_choice:
+                idx_choice = item['opsi'].index(user_choice)
+                if idx_choice == item['kunci_index']:
+                    st.success("✅ Jawaban Anda Benar!")
+                else:
+                    st.error("❌ Jawaban Anda Kurang Tepat.")
+            
+            with st.expander("Lihat Kunci & Pembahasan Lengkap"):
+                st.info(f"**Kunci Jawaban:** {item['opsi'][item['kunci_index']]}")
+                st.write(f"**Pembahasan:** {item['pembahasan']}")
 
-# --- 8. FOOTER DIKUNCI ---
+# --- 8. FOOTER DIKUNCI (BOLD) ---
 st.write("---")
 st.markdown("""
-<div style='text-align: center; font-size: 12px; font-weight: bold;'>
-    <p>Aplikasi Generator Soal ini Milik Bimbingan Belajar Digital "Akademi Pelajar"</p>
-    <p>Dilarang menyebarluaskan tanpa persetujuan tertulis dari Akademi Pelajar</p>
-    <p>Semua hak cipta dilindungi undang-undang</p>
+<div style='text-align: center; font-size: 12px;'>
+    <b><p>Aplikasi Generator Soal ini Milik Bimbingan Belajar Digital "Akademi Pelajar"</p></b>
+    <b><p>Dilarang menyebarluaskan tanpa persetujuan tertulis dari Akademi Pelajar</p></b>
+    <b><p>Semua hak cipta dilindungi undang-undang</p></b>
 </div>
 """, unsafe_allow_html=True)
