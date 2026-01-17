@@ -4,7 +4,7 @@ import requests
 import os
 import time
 import matplotlib
-# Menggunakan backend Agg agar stabil di server (non-interactive)
+# Menggunakan backend Agg agar stabil di server Streamlit
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from io import BytesIO
@@ -70,48 +70,55 @@ DATABASE_MATERI = {
     }
 }
 
-# --- 4. FUNGSI VISUAL HYBRID ---
+# --- 4. FUNGSI VISUAL ---
 def render_bar_chart(chart_data, title="Diagram Batang"):
-    """Fungsi Rendering Diagram Berbasis Data Statistik"""
+    plt.close('all') # Bersihkan plot lama
     fig, ax = plt.subplots(figsize=(6, 4))
     categories = list(chart_data.keys())
     values = [float(v) for v in chart_data.values()]
-    
     bars = ax.bar(categories, values, color=plt.cm.Paired(range(len(categories))), edgecolor='black')
     ax.set_title(title, fontsize=12, fontweight='bold')
     ax.set_ylabel("Jumlah")
     ax.grid(axis='y', linestyle='--', alpha=0.7)
-    
     for bar in bars:
         yval = bar.get_height()
         ax.text(bar.get_x() + bar.get_width()/2, yval + 0.1, f'{int(yval)}', ha='center', va='bottom', fontweight='bold')
-        
     buf = BytesIO()
     plt.savefig(buf, format='png', bbox_inches='tight')
     plt.close(fig)
     return buf
 
 def construct_img_url(prompt):
-    """Fungsi Ilustrasi Objek (Pollinations)"""
     return f"https://image.pollinations.ai/prompt/{quote(prompt + ', simple educational illustration, white background')}?width=600&height=400&nologo=true&seed={int(time.time())}"
 
-# --- 5. FUNGSI WORD ---
+def safe_download_image(url):
+    try:
+        headers = {"User-Agent": "Mozilla/5.0"}
+        resp = requests.get(url, headers=headers, timeout=15)
+        if resp.status_code == 200: return BytesIO(resp.content)
+    except: return None
+    return None
+
+# --- 5. FUNGSI WORD (DEFENSIVE KEY HANDLING) ---
 def create_docx(data_soal, mapel, kelas):
     doc = Document()
     doc.add_heading(f'LATIHAN SOAL {mapel.upper()}', 0)
     doc.add_paragraph(f'Kelas: {kelas}')
     for idx, item in enumerate(data_soal):
         p = doc.add_paragraph()
-        p.add_run(f"{idx+1}. {item['soal']}").bold = True
+        soal_text = item.get('soal', item.get('pertanyaan', ''))
+        p.add_run(f"{idx+1}. {soal_text}").bold = True
         if item.get('img_bytes'):
             doc.add_picture(BytesIO(item['img_bytes']), width=Inches(3.5))
         
+        opsi = item.get('opsi', item.get('pilihan', item.get('options', [])))
         labels = ['A', 'B', 'C', 'D']
-        for i, op in enumerate(item['opsi']):
+        for i, op in enumerate(opsi):
+            if i >= 4: break
             prefix = f"{labels[i]}. "
             doc.add_paragraph(op if op.startswith(tuple(labels)) else f"{prefix}{op}")
         
-        meta = doc.add_paragraph(f"Materi : {item['materi']} | Level : {item['level']}")
+        meta = doc.add_paragraph(f"Materi : {item.get('materi','')} | Level : {item.get('level','')}")
         meta.italic = True
     bio = BytesIO()
     doc.save(bio)
@@ -141,7 +148,6 @@ with st.sidebar:
         with st.expander(f"Soal {i+1}", expanded=(i==0)):
             topik = st.selectbox("Materi", DATABASE_MATERI[kelas_sel][mapel_sel], key=f"t_{i}_{suffix}")
             level = st.selectbox("Level", ["Mudah", "Sedang", "Sulit"], key=f"l_{i}_{suffix}")
-            # Proteksi Gambar Maksimal 1
             is_disabled = any_img_selected
             img_on = st.checkbox("Gunakan Gambar", value=False, key=f"img_{i}_{suffix}", disabled=is_disabled)
             if img_on: any_img_selected = True
@@ -163,18 +169,20 @@ st.write("---")
 if btn_gen:
     client = OpenAI(api_key=api_key)
     status_box = st.status("✅ Soal Dalam Proses Pembuatan, Silahkan Ditunggu.", expanded=True)
-    
     summary = "\n".join([f"- Soal {i+1}: {r['topik']} ({r['level']})" for i, r in enumerate(req_details)])
     
-    # PERSONA PAKAR KEMDIKBUD (JANTUNG SISTEM)
+    # PERSONA PAKAR KEMDIKBUD (KUNCI JANTUNG SISTEM)
     system_prompt = """Anda adalah Pakar Pengembang Kurikulum Merdeka Kemdikbud RI dan Penulis Bank Soal Profesional.
-    TUGAS UTAMA: Jika materi adalah 'Diagram Batang', 'Diagram Gambar', atau 'Penyajian Data', Anda WAJIB membuat soal tipe 'Membaca Data' dari grafik.
+    Tugas Anda membuat soal pilihan ganda SD yang RELEVAN, EDUKATIF, dan menggunakan BAHASA INDONESIA formal.
+    
+    WAJIB: Jika materi adalah 'Diagram Batang', 'Diagram Gambar', atau 'Penyajian Data', Anda WAJIB membuat soal tipe 'Membaca Data' dari grafik.
     
     ATURAN KETAT JSON:
-    1. Output HARUS dalam objek JSON dengan key 'soal_list'.
-    2. Jika soal perlu diagram, Anda WAJIB menyertakan objek 'chart_data' (key-value pair angka).
-    3. Pilihan A-D WAJIB Bahasa Indonesia formal.
-    4. Seluruh soal harus 100% akurat sesuai kurikulum SD."""
+    1. Output HARUS JSON object dengan key 'soal_list'.
+    2. Tiap item di 'soal_list' HARUS memiliki key: 'soal', 'opsi', 'kunci_index', 'pembahasan'.
+    3. Jika soal perlu diagram, tambahkan key 'chart_data' (key-value pair angka).
+    4. Opsi jawaban HARUS 4 buah dan diawali label 'A. ', 'B. ', 'C. ', 'D. '.
+    5. 'image_prompt' dlm Bahasa Inggris teknis (no text inside image)."""
 
     try:
         response = client.chat.completions.create(
@@ -183,57 +191,66 @@ if btn_gen:
             response_format={"type": "json_object"}
         )
         
-        raw_data = json.loads(response.choices[0].message.content)
-        # Menangani variasi struktur JSON dari AI
-        data = raw_data.get("soal_list", [])
-        if not data and isinstance(raw_data, list): data = raw_data
+        raw_json = json.loads(response.choices[0].message.content)
+        data = raw_json.get("soal_list", [])
+        if not data and isinstance(raw_json, list): data = raw_json
         
-        if not data:
-            st.error("AI tidak mengembalikan daftar soal. Coba klik Generate lagi.")
-        else:
+        if data:
             pb = st.progress(0)
             for i, item in enumerate(data):
-                if i < len(req_details):
-                    item['materi'], item['level'] = req_details[i]['topik'], req_details[i]['level']
-                    item['img_bytes'] = None
-                    
-                    if req_details[i]['use_image']:
-                        if item.get('chart_data'):
-                            status_box.write(f"📊 Merender Diagram Akurat...")
-                            item['img_bytes'] = render_bar_chart(item['chart_data'], title=f"Data {item['materi']}").getvalue()
-                        else:
-                            status_box.write(f"🖼️ Menyiapkan Ilustrasi...")
-                            resp = requests.get(construct_img_url(item.get('image_prompt', 'educational illustration')))
-                            if resp.status_code == 200: item['img_bytes'] = resp.content
+                if i >= len(req_details): break
+                item['materi'], item['level'] = req_details[i]['topik'], req_details[i]['level']
+                item['img_bytes'] = None
+                
+                if req_details[i]['use_image']:
+                    if item.get('chart_data'):
+                        status_box.write(f"📊 Merender Diagram Akurat...")
+                        item['img_bytes'] = render_bar_chart(item['chart_data'], title=f"Data {item['materi']}").getvalue()
+                    else:
+                        status_box.write(f"🖼️ Menyiapkan Ilustrasi...")
+                        resp = requests.get(construct_img_url(item.get('image_prompt', 'educational illustration')))
+                        if resp.status_code == 200: item['img_bytes'] = resp.content
                 
                 pb.progress(int(((i + 1) / len(data)) * 100))
             
             st.session_state.hasil_soal = data
             status_box.update(label="✅ Selesai!", state="complete", expanded=False)
+        else:
+            st.error("AI gagal mengembalikan daftar soal. Coba generate ulang.")
             
     except Exception as e:
         status_box.update(label="❌ Terjadi kesalahan", state="error")
-        st.error(f"Gagal memproses data: {e}")
+        st.error(f"Gagal: {e}")
 
 # --- 8. TAMPILAN HASIL ---
 if st.session_state.hasil_soal:
-    st.download_button("📥 Download Word", create_docx(st.session_state.hasil_soal, mapel_sel, kelas_sel), f"Soal_{mapel_sel}.docx")
+    # Dibungkus try-except agar tidak crash jika ada soal yang datanya tidak lengkap
+    try:
+        st.download_button("📥 Download Word", create_docx(st.session_state.hasil_soal, mapel_sel, kelas_sel), f"Soal_{mapel_sel}.docx")
+    except Exception as e:
+        st.warning(f"Tombol download mengalami kendala teknis: {e}")
+
     for idx, item in enumerate(st.session_state.hasil_soal):
         with st.container(border=True):
-            st.markdown(f"### Soal {item.get('no', idx+1)}\n**{item.get('soal', 'Pertanyaan tidak ditemukan')}**")
+            soal_txt = item.get('soal', item.get('pertanyaan', 'Pertanyaan Kosong'))
+            st.markdown(f"### Soal {idx+1}\n**{soal_txt}**")
+            
             if item.get('img_bytes'): st.image(item['img_bytes'], width=500)
             
-            opsi = item.get('opsi', [])
+            opsi = item.get('opsi', item.get('pilihan', item.get('options', [])))
             labels = ['A', 'B', 'C', 'D']
             clean_opsi = [o if o.startswith(labels[i]) else f"{labels[i]}. {o}" for i, o in enumerate(opsi)]
             
-            pilih = st.radio("Jawaban:", clean_opsi, key=f"ans_{idx}_{suffix}", index=None)
-            st.markdown(f"<div class='metadata-text'>Materi : {item.get('materi','-')} | Level : {item.get('level','-')}</div>", unsafe_allow_html=True)
+            if clean_opsi:
+                pilih = st.radio("Jawaban:", clean_opsi, key=f"ans_{idx}_{suffix}", index=None)
+                st.markdown(f"<div class='metadata-text'>Materi : {item.get('materi','')} | Level : {item.get('level','')}</div>", unsafe_allow_html=True)
+                
+                if pilih:
+                    if clean_opsi.index(pilih) == item.get('kunci_index', 0): st.success("✅ Jawaban Anda Benar!")
+                    else: st.error("❌ Jawaban Anda Salah.")
             
-            if pilih:
-                if clean_opsi.index(pilih) == item.get('kunci_index', 0): st.success("✅ Jawaban Anda Benar!")
-                else: st.error("❌ Jawaban Anda Salah.")
-            with st.expander("Kunci & Pembahasan"): st.write(item.get('pembahasan', 'Pembahasan tidak tersedia.'))
+            with st.expander("Kunci & Pembahasan"): 
+                st.write(item.get('pembahasan', 'Pembahasan tidak tersedia.'))
 
 st.write("---")
 st.markdown("<div style='text-align: center; font-size: 12px;'><b><p>Aplikasi Generator Soal ini Milik Bimbingan Belajar Digital \"Akademi Pelajar\"</p><p>Dilarang menyebarluaskan tanpa persetujuan tertulis dari Akademi Pelajar</p><p>Semua hak cipta dilindungi undang-undang</p></b></div>", unsafe_allow_html=True)
