@@ -25,7 +25,7 @@ st.markdown("""
     .warning-text { font-size: 13px; color: #d9534f; font-weight: bold; margin-bottom: 20px; }
     [data-testid="stSidebar"] { background: linear-gradient(180deg, #e6f3ff 0%, #ffffff 100%); border-right: 1px solid #d1e3f3; }
     .stRadio [data-testid="stWidgetLabel"] p { font-weight: bold; font-size: 16px; color: #1E1E1E; }
-    .metadata-text { font-size: 12px; font-style: italic; font-family: 'Poppins', sans-serif; font-weight: bold; color: #555; margin-top: 10px; }
+    .metadata-text { font-size: 12px; font-style: italic; font-family: 'Poppins', sans-serif; font-weight: bold; color: #555; margin-top: 10px; margin-bottom: 10px;}
     div.stButton > button { width: 100%; }
 </style>
 """, unsafe_allow_html=True)
@@ -72,38 +72,23 @@ DATABASE_MATERI = {
 
 # --- 4. FUNGSI VISUAL AMAN ---
 def render_bar_chart(chart_data, title="Diagram Batang"):
-    """Fungsi Rendering Diagram dengan proteksi tipe data"""
     plt.close('all')
-    fig, ax = plt.subplots(figsize=(6, 4))
-    
+    fig, ax = plt.subplots(figsize=(7, 4))
     categories = []
     values = []
-    
-    # Normalisasi data: Memastikan value adalah angka, bukan dict
     for k, v in chart_data.items():
         categories.append(str(k))
-        if isinstance(v, dict):
-            # Jika AI memberikan dict, ambil angka pertama yang ditemukan
-            numeric_val = 0
-            for sub_v in v.values():
-                try:
-                    numeric_val = float(sub_v)
-                    break
-                except: continue
-            values.append(numeric_val)
-        else:
-            try: values.append(float(v))
-            except: values.append(0.0)
-
+        try:
+            if isinstance(v, dict): values.append(float(list(v.values())[0]))
+            else: values.append(float(v))
+        except: values.append(0.0)
     bars = ax.bar(categories, values, color=plt.cm.Paired(range(len(categories))), edgecolor='black')
     ax.set_title(title, fontsize=12, fontweight='bold')
     ax.set_ylabel("Jumlah")
     ax.grid(axis='y', linestyle='--', alpha=0.7)
-    
     for bar in bars:
         yval = bar.get_height()
         ax.text(bar.get_x() + bar.get_width()/2, yval + 0.1, f'{int(yval)}', ha='center', va='bottom', fontweight='bold')
-        
     buf = BytesIO()
     plt.savefig(buf, format='png', bbox_inches='tight')
     plt.close(fig)
@@ -122,16 +107,13 @@ def create_docx(data_soal, mapel, kelas):
         p.add_run(f"{idx+1}. {item.get('soal','')}").bold = True
         if item.get('img_bytes'):
             doc.add_picture(BytesIO(item['img_bytes']), width=Inches(3.5))
-        
         labels = ['A', 'B', 'C', 'D']
         opsi = item.get('opsi', [])
         for i, op in enumerate(opsi):
             if i >= 4: break
             prefix = f"{labels[i]}. "
             doc.add_paragraph(op if op.startswith(tuple(labels)) else f"{prefix}{op}")
-        
-        meta = doc.add_paragraph(f"Materi : {item.get('materi','')} | Level : {item.get('level','')}")
-        meta.italic = True
+        doc.add_paragraph(f"Materi : {item.get('materi','')} | Level : {item.get('level','')}")
     bio = BytesIO()
     doc.save(bio)
     bio.seek(0)
@@ -145,26 +127,21 @@ with st.sidebar:
     suffix = st.session_state.reset_counter
     if os.path.exists("logo.png"):
         c1, c2, c3 = st.columns([1, 2, 1]); c2.image("logo.png", width=100)
-    
     st.markdown("### ⚙️ Konfigurasi")
     api_key = st.secrets.get("OPENAI_API_KEY") or st.text_input("OpenAI API Key", type="password", key=f"api_{suffix}")
     if not api_key: st.stop()
-
     kelas_sel = st.selectbox("Pilih Kelas", list(DATABASE_MATERI.keys()), key=f"k_{suffix}")
     mapel_sel = st.selectbox("Mata Pelajaran", list(DATABASE_MATERI[kelas_sel].keys()), key=f"m_{suffix}")
-    jml_soal = st.slider("Jumlah Soal", 1, 5, 2, key=f"j_{suffix}")
-
+    jml_soal = st.slider("Jumlah Soal", 1, 5, 1, key=f"j_{suffix}")
     req_details = []
     any_img_selected = False
     for i in range(jml_soal):
         with st.expander(f"Soal {i+1}", expanded=(i==0)):
-            topik = st.selectbox("Materi", DATABASE_MATERI[kelas_sel][mapel_sel], key=f"t_{i}_{suffix}")
-            level = st.selectbox("Level", ["Mudah", "Sedang", "Sulit"], key=f"l_{i}_{suffix}")
-            is_disabled = any_img_selected
-            img_on = st.checkbox("Gunakan Gambar", value=False, key=f"img_{i}_{suffix}", disabled=is_disabled)
+            top = st.selectbox("Materi", DATABASE_MATERI[kelas_sel][mapel_sel], key=f"t_{i}_{suffix}")
+            lvl = st.selectbox("Level", ["Mudah", "Sedang", "Sulit"], key=f"l_{i}_{suffix}")
+            img_on = st.checkbox("Gunakan Gambar", value=False, key=f"img_{i}_{suffix}", disabled=any_img_selected)
             if img_on: any_img_selected = True
-            req_details.append({"topik": topik, "level": level, "use_image": img_on})
-
+            req_details.append({"topik": top, "level": lvl, "use_image": img_on})
     c1, c2 = st.columns(2)
     btn_gen = c1.button("🚀 Generate", type="primary")
     if c2.button("🔄 Reset"):
@@ -182,52 +159,39 @@ if btn_gen:
     client = OpenAI(api_key=api_key)
     status_box = st.status("✅ Soal Dalam Proses Pembuatan, Silahkan Ditunggu.", expanded=True)
     summary = "\n".join([f"- Soal {i+1}: {r['topik']} ({r['level']})" for i, r in enumerate(req_details)])
-    
-    system_prompt = """Anda adalah Pakar Pengembang Kurikulum Merdeka Kemdikbud RI.
-    TUGAS UTAMA: Jika materi diagram (Batang/Data), buat soal tipe 'Membaca Data' dari grafik.
-    
+    system_prompt = """Anda adalah Pakar Kurikulum Merdeka Kemdikbud RI. 
+    WAJIB: Jika materi diagram (Batang/Data), buat soal tipe 'Membaca Data' dari grafik.
     ATURAN KETAT JSON:
-    1. 'chart_data' WAJIB berbentuk FLAT dictionary { "Kategori": angka }, jangan ada dictionary di dalam dictionary.
-    2. Angka di cerita soal harus sama persis dengan angka di 'chart_data'.
-    3. Output WAJIB dalam key 'soal_list'.
-    4. Seluruh teks Bahasa Indonesia formal."""
-
+    1. 'chart_data' WAJIB flat dict { "Kategori": angka }.
+    2. 'soal_list' HARUS berisi key: 'soal', 'opsi' (array 4 string), 'kunci_index', 'pembahasan'.
+    3. Seluruh teks Bahasa Indonesia formal."""
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": f"Mapel: {mapel_sel}, Kelas: {kelas_sel}\n{summary}"}],
             response_format={"type": "json_object"}
         )
-        
-        raw_res = json.loads(response.choices[0].message.content)
-        data = raw_res.get("soal_list", [])
-        
-        if data:
-            pb = st.progress(0)
-            for i, item in enumerate(data):
-                if i < len(req_details):
-                    item['materi'], item['level'] = req_details[i]['topik'], req_details[i]['level']
-                    item['img_bytes'] = None
-                    
-                    if req_details[i]['use_image']:
-                        if item.get('chart_data'):
-                            status_box.write(f"📊 Merender Diagram Akurat...")
-                            item['img_bytes'] = render_bar_chart(item['chart_data'], title=f"Data {item['materi']}").getvalue()
-                        else:
-                            status_box.write(f"🖼️ Menyiapkan Ilustrasi...")
-                            resp = requests.get(construct_img_url(item.get('image_prompt', 'object')))
-                            if resp.status_code == 200: item['img_bytes'] = resp.content
-                
-                pb.progress(int(((i + 1) / len(data)) * 100))
-            
-            st.session_state.hasil_soal = data
-            status_box.update(label="✅ Selesai!", state="complete", expanded=False)
-            
-    except Exception as e:
-        status_box.update(label="❌ Terjadi kesalahan", state="error")
-        st.error(f"Gagal: {e}")
+        data = json.loads(response.choices[0].message.content).get("soal_list", [])
+        pb = st.progress(0)
+        for i, item in enumerate(data):
+            if i < len(req_details):
+                item['materi'] = req_details[i]['topik']
+                item['level'] = req_details[i]['level']
+                item['img_bytes'] = None
+                if req_details[i]['use_image']:
+                    if item.get('chart_data'):
+                        status_box.write(f"📊 Merender Diagram Akurat...")
+                        item['img_bytes'] = render_bar_chart(item['chart_data'], title=f"Data {item['materi']}").getvalue()
+                    else:
+                        status_box.write(f"🖼️ Menyiapkan Ilustrasi...")
+                        resp = requests.get(construct_img_url(item.get('image_prompt', 'object')))
+                        if resp.status_code == 200: item['img_bytes'] = resp.content
+            pb.progress(int(((i + 1) / len(data)) * 100))
+        st.session_state.hasil_soal = data
+        status_box.update(label="✅ Selesai!", state="complete", expanded=False)
+    except Exception as e: st.error(f"Gagal: {e}")
 
-# --- 8. TAMPILAN ---
+# --- 8. TAMPILAN HASIL ---
 if st.session_state.hasil_soal:
     st.download_button("📥 Download Word", create_docx(st.session_state.hasil_soal, mapel_sel, kelas_sel), f"Soal_{mapel_sel}.docx")
     for idx, item in enumerate(st.session_state.hasil_soal):
@@ -235,12 +199,14 @@ if st.session_state.hasil_soal:
             st.markdown(f"### Soal {idx+1}\n**{item.get('soal','')}**")
             if item.get('img_bytes'): st.image(item['img_bytes'], width=500)
             
-            labels = ['A', 'B', 'C', 'D']
+            # PROTEKSI OPSI A-D
             opsi = item.get('opsi', [])
+            labels = ['A', 'B', 'C', 'D']
             clean_opsi = [o if o.startswith(labels[i]) else f"{labels[i]}. {o}" for i, o in enumerate(opsi)]
             
             if clean_opsi:
-                pilih = st.radio("Jawaban:", clean_opsi, key=f"ans_{idx}_{suffix}", index=None)
+                pilih = st.radio("Pilih Jawaban:", clean_opsi, key=f"ans_{idx}_{suffix}", index=None)
+                # LABEL MATERI & LEVEL (BOLD-ITALIC)
                 st.markdown(f"<div class='metadata-text'>Materi : {item.get('materi','')} | Level : {item.get('level','')}</div>", unsafe_allow_html=True)
                 
                 if pilih:
