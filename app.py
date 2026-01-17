@@ -50,6 +50,10 @@ st.markdown("""
         font-weight: bold;
         font-size: 16px;
     }
+    /* Membuat tombol di sidebar terlihat serasi */
+    div.stButton > button {
+        width: 100%;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -135,7 +139,10 @@ def create_docx(data_soal, mapel, kelas):
     bio.seek(0)
     return bio
 
-# --- 6. SIDEBAR (LOGO & GRADIENT DIKUNCI) ---
+# --- 6. SIDEBAR (LOGO, TOMBOL GENERATE & RESET) ---
+if 'hasil_soal' not in st.session_state:
+    st.session_state.hasil_soal = None
+
 with st.sidebar:
     if os.path.exists("logo.png"):
         c1, c2, c3 = st.columns([1, 2, 1])
@@ -158,10 +165,18 @@ with st.sidebar:
         with st.expander(f"Pengaturan Soal {i+1}", expanded=True):
             topik = st.selectbox("Materi", DATABASE_MATERI[kelas_sel][mapel_sel], key=f"top_{i}")
             level = st.selectbox("Level", ["Mudah", "Sedang", "Sulit"], key=f"lvl_{i}")
+            # Default centang gambar hanya pada soal nomor 1
             img_on = st.checkbox("Gunakan Gambar", value=(True if i==0 else False), key=f"img_{i}")
             req_details.append({"topik": topik, "level": level, "use_image": img_on})
 
-    btn_gen = st.button("🚀 Generate Soal", type="primary")
+    # KOLOM UNTUK TOMBOL GENERATE DAN RESET
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+        btn_gen = st.button("🚀 Generate", type="primary")
+    with col_btn2:
+        if st.button("🔄 Reset"):
+            st.session_state.hasil_soal = None
+            st.rerun() # Refresh aplikasi ke kondisi awal
 
 # --- 7. MAIN PAGE ---
 # --- HEADER DIKUNCI ---
@@ -169,9 +184,6 @@ st.markdown('<div class="header-title">Generator Soal SD</div>', unsafe_allow_ht
 st.markdown('<div class="header-sub">Berdasarkan Kurikulum Merdeka</div>', unsafe_allow_html=True)
 st.markdown('<div class="warning-text">⚠️ Ketentuan: Soal dengan ilustrasi gambar maksimal 1 per sesi agar hasil lebih akurat.</div>', unsafe_allow_html=True)
 st.write("---")
-
-if 'hasil_soal' not in st.session_state:
-    st.session_state.hasil_soal = None
 
 if btn_gen:
     client = OpenAI(api_key=api_key)
@@ -182,7 +194,6 @@ if btn_gen:
     for i, req in enumerate(req_details):
         materi_summary += f"- Soal {i+1}: Materi '{req['topik']}', Tingkat Kesulitan '{req['level']}'\n"
 
-    # PERSONA GURU SENIOR DIBERSIHKAN DAN DITAJAMKAN
     system_prompt = """Anda adalah Guru Senior SD berprestasi dengan pengalaman puluhan tahun menyusun Bank Soal tingkat Nasional. 
     Anda sangat teliti dalam membuat pertanyaan yang mendidik dan opsi jawaban (distraktor) yang logis namun akurat. 
     WAJIB: Jika dalam pembahasan Anda menyebutkan ciri fisik tertentu (contoh: 'Bulat Sempurna' untuk Bola), maka ciri tersebut HARUS ada dalam salah satu opsi jawaban sebagai jawaban yang benar. 
@@ -199,11 +210,11 @@ if btn_gen:
       "soal_list": [
         {{
           "no": 1,
-          "soal": "isi pertanyaan yang tajam",
-          "opsi": ["A. pilihan yang akurat", "B. distraktor logis", "C. distraktor logis", "D. distraktor logis"],
+          "soal": "isi pertanyaan",
+          "opsi": ["A. pilihan", "B. pilihan", "C. pilihan", "D. pilihan"],
           "kunci_index": 0,
-          "pembahasan": "penjelasan mendalam sesuai materi",
-          "image_prompt": "simple english description for high-quality educational illustration"
+          "pembahasan": "penjelasan mendalam",
+          "image_prompt": "simple english description for illustration"
         }}
       ]
     }}
@@ -236,12 +247,13 @@ if btn_gen:
         
         st.session_state.hasil_soal = data
         progress_bar.empty()
-        status_box.update(label="✅ Soal Akurat Berhasil Dibuat!", state="complete", expanded=False)
+        status_box.update(label="✅ Soal Berhasil Dibuat!", state="complete", expanded=False)
         
     except Exception as e:
         status_box.update(label="❌ Terjadi kesalahan", state="error")
         st.error(f"Gagal: {e}")
 
+# TAMPILKAN HASIL JIKA ADA
 if st.session_state.hasil_soal:
     docx_file = create_docx(st.session_state.hasil_soal, mapel_sel, kelas_sel)
     st.download_button("📥 Download Word (.docx)", data=docx_file, file_name=f"Soal_{mapel_sel}.docx")
