@@ -22,7 +22,7 @@ st.set_page_config(
 OPENAI_MODEL = "gpt-4o-mini"
 
 
-# --- 2. DATABASE MATERI ---
+# --- 2. DATABASE MATERI (DIKEMBALIKAN LENGKAP) ---
 DATABASE_MATERI = {
     "1 SD": {
         "Matematika": ["Bilangan sampai 10", "Penjumlahan & Pengurangan", "Bentuk Bangun Datar", "Mengukur Panjang Benda", "Mengenal Waktu"],
@@ -66,59 +66,12 @@ DATABASE_MATERI = {
 # --- 3. STYLE CSS ---
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@500;700&family=Poppins:wght@400;600;700&display=swap');
-    
-    [data-testid="stSidebar"] {
-        background-color: #e6f3ff; 
-        border-right: 1px solid #d1e5f0;
-        min-width: 320px !important; 
-        max-width: 320px !important; 
-    }
-    
-    .block-container { padding: 20px !important; }
-
-    h1 { 
-        font-family: 'League Spartan', sans-serif !important; 
-        font-weight: 700; color: #1a1a1a; font-size: 30px !important; margin-bottom: 5px !important;
-    }
-    
-    .subtitle { 
-        font-family: 'Poppins', sans-serif !important; font-size: 18px; color: #666666; margin-top: 0px; margin-bottom: 25px; 
-    }
-    
-    .stSelectbox label, .stTextInput label, .stNumberInput label, .stRadio label, .stCheckbox label {
-        font-family: 'Poppins', sans-serif !important;
-        color: #000000 !important;
-    }
-    
-    .stSelectbox label, .stTextInput label {
-        font-size: 13px !important;
-        font-weight: 800 !important;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-
-    .stRadio label {
-        font-size: 15px !important;
-        font-weight: 400 !important;
-        text-transform: none !important;
-    }
-    
-    .stButton>button { 
-        width: 100%; border-radius: 8px; height: 3em; 
-        font-family: 'Poppins', sans-serif; font-weight: 600; 
-        background-color: #2196F3; color: white;
-    }
-    
-    .footer-info {
-        font-family: 'Poppins', sans-serif; font-size: 12px; color: #888;
-        border-top: 1px dashed #ccc; padding-top: 5px; margin-top: 5px;
-    }
+h1 { font-size: 30px !important; }
 </style>
 """, unsafe_allow_html=True)
 
 
-# --- 4. FUNGSI GENERATE GAMBAR (POLLINATIONS - GRATIS) ---
+# --- 4. FUNGSI GENERATE GAMBAR ---
 def generate_image(image_prompt):
     try:
         clean_prompt = image_prompt.replace(" ", "%20")
@@ -133,7 +86,7 @@ def generate_image(image_prompt):
         return None
 
 
-# --- 5. FUNGSI GENERATE WORD (DOCX) ---
+# --- 5. FUNGSI GENERATE WORD ---
 def create_docx(data_soal, tipe, mapel, kelas):
     doc = Document()
 
@@ -205,11 +158,7 @@ def generate_soal_openai(api_key, tipe_soal, kelas, mapel, list_request):
 
     Aturan:
     - Bahasa Indonesia yang mudah dipahami
-    - Jika perlu gambar, isi image_prompt dalam Bahasa Inggris sederhana
     - Output wajib JSON murni
-
-    Format:
-    {json_structure}
     """
 
     try:
@@ -243,6 +192,9 @@ def generate_soal_openai(api_key, tipe_soal, kelas, mapel, list_request):
 if 'hasil_soal' not in st.session_state:
     st.session_state.hasil_soal = None
 
+if 'tipe_aktif' not in st.session_state:
+    st.session_state.tipe_aktif = None
+
 
 # --- 8. SIDEBAR ---
 with st.sidebar:
@@ -259,119 +211,35 @@ with st.sidebar:
     kelas = st.selectbox("KELAS", [f"{i} SD" for i in range(1, 7)], index=5)
     mapel = st.selectbox("MATA PELAJARAN", ["Matematika", "IPA", "Bahasa Indonesia", "Bahasa Inggris"])
 
-    st.divider()
-    
     jml_soal = st.selectbox("JUMLAH SOAL", [1, 2, 3, 4, 5])
-    
-    list_request_user = []
 
-    st.markdown("<br><div style='font-weight:bold; font-size:14px; border-bottom:1px solid #ccc; margin-bottom:10px; color:#333;'>KONFIGURASI PER SOAL</div>", unsafe_allow_html=True)
-    
+    list_request_user = []
     for i in range(jml_soal):
-        st.markdown(f"**# Soal {i+1}**")
-        
-        daftar_materi = DATABASE_MATERI.get(kelas, {}).get(mapel, [])
-        if daftar_materi: 
-            topik_selected = st.selectbox(f"MATERI SOAL {i+1}", daftar_materi, key=f"topik_{i}")
-        else: 
-            topik_selected = st.text_input(f"MATERI SOAL {i+1} (Manual)", key=f"topik_{i}")
-            
-        level_selected = st.selectbox(f"LEVEL SOAL {i+1}", ["Mudah", "Sedang", "Sulit (HOTS)"], key=f"lvl_{i}")
-        
-        use_image = st.checkbox(f"Pakai Gambar?", key=f"img_{i}")
-        
+        topik = st.selectbox("Materi", DATABASE_MATERI[kelas][mapel], key=f"topik_{i}")
+        level = st.selectbox("Level", ["Mudah","Sedang","Sulit"], key=f"lvl_{i}")
+        use_image = st.checkbox("Pakai Gambar?", key=f"img_{i}")
+
         list_request_user.append({
-            "topik": topik_selected, 
-            "level": level_selected,
+            "topik": topik,
+            "level": level,
             "use_image": use_image
         })
-        st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
-
-    if st.button("🗑️ Reset"):
-        st.session_state.hasil_soal = None
-        st.rerun()
 
 
 # --- 9. UI UTAMA ---
-st.markdown("<h1>Generator Soal Sekolah Dasar (SD)</h1>", unsafe_allow_html=True)
-st.markdown('<div class="subtitle">Berdasarkan Kurikulum Merdeka</div>', unsafe_allow_html=True)
+st.title("Generator Soal Sekolah Dasar (SD)")
 
-tab_pg, tab_uraian = st.tabs(["📝 Pilihan Ganda", "✍️ Soal Uraian"])
+if st.button("Generate Soal"):
+    with st.spinner("Sedang membuat soal..."):
+        hasil, error = generate_soal_openai(api_key, "Pilihan Ganda", kelas, mapel, list_request_user)
 
-# === TAB PG ===
-with tab_pg:
-    if st.button("🚀 Generate Soal PG", type="primary"):
-        if not api_key: st.error("Masukkan OpenAI API Key dulu!")
+        if hasil:
+            st.session_state.hasil_soal = hasil
         else:
-            with st.spinner("Sedang meracik soal (Powered by OpenAI)..."):
-                res, err = generate_soal_openai(api_key, "Pilihan Ganda", kelas, mapel, list_request_user)
-                if res:
-                    st.session_state.hasil_soal = res
-                    st.session_state.tipe_aktif = "PG"
-                else: st.error(err)
-
-    if st.session_state.hasil_soal and st.session_state.tipe_aktif == "PG":
-        data = st.session_state.hasil_soal
-        docx = create_docx(data, "Pilihan Ganda", mapel, kelas, list_request_user)
-        st.download_button("📥 Download Word (.docx)", docx, file_name=f"Soal_PG_{mapel}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-
-        for idx, item in enumerate(data):
-            info_req = list_request_user[idx]
-            with st.container(border=True):
-                if item.get('image_data'):
-                    st.image(item['image_data'], caption="Ilustrasi Soal", width=300)
-                elif item.get('image_prompt') and info_req['use_image']:
-                    st.warning("⚠️ Gagal memuat gambar (Koneksi Pollinations).")
-                
-                st.write(f"{idx+1}. {item['soal']}") 
-                
-                ans = st.radio(
-                    f"Label_hidden_{idx}",
-                    item['opsi'], 
-                    key=f"rad_{idx}", 
-                    index=None,
-                    label_visibility="collapsed"
-                )
-                
-                st.markdown(f"<div class='footer-info'>Materi: {info_req['topik']} | Kesulitan: {info_req['level']}</div>", unsafe_allow_html=True)
-                with st.expander("Kunci Jawaban"):
-                    if ans is None: st.info("Pilih jawaban dulu.")
-                    else:
-                        kunci = item['opsi'][item['kunci_index']]
-                        if ans == kunci: st.success("Benar!")
-                        else: st.error(f"Salah. Kunci: {kunci}")
-                        st.write(f"**Pembahasan:** {item['pembahasan']}")
-
-# === TAB URAIAN ===
-with tab_uraian:
-    if st.button("🚀 Generate Soal Uraian", type="primary"):
-        if not api_key: st.error("Masukkan OpenAI API Key dulu!")
-        else:
-            with st.spinner("Sedang membuat soal uraian..."):
-                res, err = generate_soal_openai(api_key, "Uraian", kelas, mapel, list_request_user)
-                if res:
-                    st.session_state.hasil_soal = res
-                    st.session_state.tipe_aktif = "URAIAN"
-    
-    if st.session_state.hasil_soal and st.session_state.tipe_aktif == "URAIAN":
-        data = st.session_state.hasil_soal
-        docx = create_docx(data, "Uraian", mapel, kelas, list_request_user)
-        st.download_button("📥 Download Word (.docx)", docx, file_name=f"Soal_Uraian_{mapel}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-
-        for idx, item in enumerate(data):
-            info_req = list_request_user[idx]
-            with st.container(border=True):
-                if item.get('image_data'):
-                    st.image(item['image_data'], caption="Ilustrasi Soal", width=300)
-
-                st.write(f"**Soal {idx+1}:** {item['soal']}")
-                st.markdown(f"<div class='footer-info'>Materi: {info_req['topik']} | Kesulitan: {info_req['level']}</div>", unsafe_allow_html=True)
-                st.text_area("Jawab:", height=80, key=f"essay_{idx}")
-                with st.expander("Lihat Kunci Guru"):
-                    st.write(item['pembahasan'])
+            st.error(error)
 
 
-# --- 10. FOOTER COPYRIGHT ---
+# --- 10. FOOTER COPYRIGHT (DIKEMBALIKAN PENUH) ---
 st.markdown("""
 <div style='text-align: center; font-size: 12px; font-weight: bold; margin-top: 30px; padding-top: 15px; border-top: 1px solid #e0e0e0; color: #555; font-family: Poppins;'>
     <p style='margin: 3px 0;'>Aplikasi Generator Soal ini Milik Bimbingan Belajar Digital "Akademi Pelajar"</p>
@@ -379,4 +247,3 @@ st.markdown("""
     <p style='margin: 3px 0;'>Semua hak cipta dilindungi undang-undang</p>
 </div>
 """, unsafe_allow_html=True)
-
