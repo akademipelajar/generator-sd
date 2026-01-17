@@ -308,7 +308,7 @@ with tab_pg:
     if st.session_state.hasil_soal and st.session_state.tipe_aktif == "PG":
         data = st.session_state.hasil_soal
 
-        docx = create_docx(data, "Pilihan Ganda", mapel, kelas)
+        docx = create_docx(data, "Pilihan Ganda", mapel, kelas, list_request_user)
         st.download_button("📥 Download Word (.docx)", docx)
 
 
@@ -325,7 +325,7 @@ with tab_uraian:
     if st.session_state.hasil_soal and st.session_state.tipe_aktif == "URAIAN":
         data = st.session_state.hasil_soal
 
-        docx = create_docx(data, "Uraian", mapel, kelas)
+        docx = create_docx(data, "Uraian", mapel, kelas, list_request_user)
         st.download_button("📥 Download Word (.docx)", docx)
 
 
@@ -337,4 +337,5 @@ st.markdown("""
     <p style='margin: 3px 0;'>Semua hak cipta dilindungi undang-undang</p>
 </div>
 """, unsafe_allow_html=True)
+
 
