@@ -11,19 +11,58 @@ from docx.shared import Inches
 from openai import OpenAI
 
 # --- 1. KONFIGURASI HALAMAN ---
-st.set_page_config(page_title="Generator Soal SD", page_icon="📚", layout="wide")
+st.set_page_config(
+    page_title="Generator Soal SD", 
+    page_icon="📚", 
+    layout="wide"
+)
 
 # --- 2. STYLE CSS (DIKUNCI TOTAL) ---
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@700&family=Poppins:ital,wght@1,700&display=swap');
-    .header-title { font-family: 'League Spartan', sans-serif; font-size: 32px; font-weight: bold; line-height: 1.2; color: #1E1E1E; }
-    .header-sub { font-family: 'Poppins', sans-serif; font-size: 18px; font-weight: bold; font-style: italic; color: #444; margin-bottom: 5px; }
-    .warning-text { font-size: 13px; color: #d9534f; font-weight: bold; margin-bottom: 20px; }
-    [data-testid="stSidebar"] { background: linear-gradient(180deg, #e6f3ff 0%, #ffffff 100%); border-right: 1px solid #d1e3f3; }
-    .stRadio [data-testid="stWidgetLabel"] p { font-weight: bold; font-size: 16px; color: #1E1E1E; }
-    .metadata-text { font-size: 12px; font-style: italic; font-family: 'Poppins', sans-serif; font-weight: bold; color: #555; margin-top: 10px; }
-    div.stButton > button { width: 100%; }
+    
+    .header-title { 
+        font-family: 'League Spartan', sans-serif; 
+        font-size: 32px; 
+        font-weight: bold; 
+        line-height: 1.2; 
+        color: #1E1E1E; 
+    }
+    .header-sub { 
+        font-family: 'Poppins', sans-serif; 
+        font-size: 18px; 
+        font-weight: bold; 
+        font-style: italic; 
+        color: #444; 
+        margin-bottom: 5px; 
+    }
+    .warning-text { 
+        font-size: 13px; 
+        color: #d9534f; 
+        font-weight: bold; 
+        margin-bottom: 20px; 
+    }
+    [data-testid="stSidebar"] { 
+        background: linear-gradient(180deg, #e6f3ff 0%, #ffffff 100%); 
+        border-right: 1px solid #d1e3f3; 
+    }
+    .stRadio [data-testid="stWidgetLabel"] p { 
+        font-weight: bold; 
+        font-size: 16px; 
+        color: #1E1E1E; 
+    }
+    .metadata-text { 
+        font-size: 12px; 
+        font-style: italic; 
+        font-family: 'Poppins', sans-serif; 
+        font-weight: bold; 
+        color: #555; 
+        margin-top: 10px; 
+    }
+    div.stButton > button { 
+        width: 100%; 
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -69,6 +108,7 @@ DATABASE_MATERI = {
 
 # --- 4. FUNGSI VISUAL HYBRID ---
 def render_bar_chart(chart_data, title="Diagram Batang"):
+    """Render diagram akurat berbasis data statistik"""
     fig, ax = plt.subplots(figsize=(6, 4))
     categories = list(chart_data.keys())
     values = list(chart_data.values())
@@ -85,6 +125,7 @@ def render_bar_chart(chart_data, title="Diagram Batang"):
     return buf
 
 def construct_img_url(prompt):
+    """Ilustrasi objek edukatif"""
     return f"https://image.pollinations.ai/prompt/{quote(prompt + ', simple educational illustration, white background')}?width=600&height=400&nologo=true&seed={int(time.time())}"
 
 def safe_download_image(url):
@@ -127,13 +168,17 @@ if 'reset_counter' not in st.session_state: st.session_state.reset_counter = 0
 with st.sidebar:
     suffix = st.session_state.reset_counter
     if os.path.exists("logo.png"):
-        c1, c2, c3 = st.columns([1, 2, 1]); c2.image("logo.png", width=100)
+        c1, c2, c3 = st.columns([1, 2, 1])
+        with c2: st.image("logo.png", width=100)
+        
     st.markdown("### ⚙️ Konfigurasi")
     api_key = st.secrets.get("OPENAI_API_KEY") or st.text_input("OpenAI API Key", type="password", key=f"api_{suffix}")
     if not api_key: st.stop()
+    
     kelas_sel = st.selectbox("Pilih Kelas", list(DATABASE_MATERI.keys()), key=f"k_{suffix}")
     mapel_sel = st.selectbox("Mata Pelajaran", list(DATABASE_MATERI[kelas_sel].keys()), key=f"m_{suffix}")
     jml_soal = st.slider("Jumlah Soal", 1, 5, 2, key=f"j_{suffix}")
+    
     req_details = []
     any_img_selected = False
     for i in range(jml_soal):
@@ -144,6 +189,7 @@ with st.sidebar:
             img_on = st.checkbox("Gunakan Gambar", value=False, key=f"img_{i}_{suffix}", disabled=is_disabled)
             if img_on: any_img_selected = True
             req_details.append({"topik": topik, "level": level, "use_image": img_on})
+            
     c1, c2 = st.columns(2)
     btn_gen = c1.button("🚀 Generate", type="primary")
     if c2.button("🔄 Reset"):
@@ -161,13 +207,16 @@ if btn_gen:
     client = OpenAI(api_key=api_key)
     status_box = st.status("✅ Soal Dalam Proses Pembuatan, Silahkan Ditunggu.", expanded=True)
     summary = "\n".join([f"- Soal {i+1}: {r['topik']} ({r['level']})" for i, r in enumerate(req_details)])
-    system_prompt = """Anda adalah Pakar Pengembang Kurikulum Merdeka Kemdikbud RI. 
+    
+    # PERSONA PAKAR KEMDIKBUD RI (JANTUNG SISTEM)
+    system_prompt = """Anda adalah Pakar Pengembang Kurikulum Merdeka Kemdikbud RI dan Penulis Bank Soal Profesional. 
     WAJIB: Jika materi adalah 'Diagram Batang', 'Diagram Gambar', atau 'Penyajian Data', Anda WAJIB membuat soal tipe 'Membaca Data' dari grafik.
     ATURAN KETAT JSON:
     1. Jika soal perlu diagram, Anda WAJIB menyertakan objek 'chart_data' berupa dictionary {kategori: nilai_angka}.
-    2. Pertanyaan HARUS menanyakan isi data dari 'chart_data' tersebut.
-    3. Pilihan A-D WAJIB Bahasa Indonesia formal dan logis.
-    4. Jika bukan diagram, gunakan 'image_prompt' dlm Bahasa Inggris teknis (no text in image)."""
+    2. Pertanyaan HARUS menanyakan isi data dari 'chart_data' tersebut. Angka di soal harus sinkron dengan chart_data.
+    3. Pilihan A-D WAJIB Bahasa Indonesia formal dan berbobot.
+    4. Jika bukan diagram, gunakan 'image_prompt' dlm Bahasa Inggris teknis (no text inside image)."""
+    
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
@@ -207,5 +256,6 @@ if st.session_state.hasil_soal:
                 else: st.error("❌ Jawaban Anda Salah.")
             with st.expander("Kunci & Pembahasan"): st.write(item['pembahasan'])
 
+# --- 8. FOOTER DIKUNCI (BOLD) ---
 st.write("---")
 st.markdown("<div style='text-align: center; font-size: 12px;'><b><p>Aplikasi Generator Soal ini Milik Bimbingan Belajar Digital \"Akademi Pelajar\"</p><p>Dilarang menyebarluaskan tanpa persetujuan tertulis dari Akademi Pelajar</p><p>Semua hak cipta dilindungi undang-undang</p></b></div>", unsafe_allow_html=True)
