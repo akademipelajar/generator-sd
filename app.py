@@ -293,52 +293,82 @@ with st.sidebar:
 
 
 # --- 9. UI UTAMA ---
-st.title("Generator Soal Sekolah Dasar")
+st.markdown("<h1>Generator Soal Sekolah Dasar (SD)</h1>", unsafe_allow_html=True)
+st.markdown('<div class="subtitle">Berdasarkan Kurikulum Merdeka</div>', unsafe_allow_html=True)
 
-if st.button("Generate Soal"):
+tab_pg, tab_uraian = st.tabs(["📝 Pilihan Ganda", "✍️ Soal Uraian"])
 
-    with st.spinner("Sedang membuat soal..."):
-        hasil, error = generate_soal_openai(
-            api_key,
-            "Pilihan Ganda",
-            kelas,
-            mapel,
-            list_request_user
-        )
-
-        if hasil:
-            st.session_state.hasil_soal = hasil
+# === TAB PG ===
+with tab_pg:
+    if st.button("🚀 Generate Soal PG", type="primary"):
+        if not api_key: st.error("Masukkan OpenAI API Key dulu!")
         else:
-            st.error(error)
+            with st.spinner("Sedang meracik soal (Powered by OpenAI)..."):
+                res, err = generate_soal_openai(api_key, "Pilihan Ganda", kelas, mapel, list_request_user)
+                if res:
+                    st.session_state.hasil_soal = res
+                    st.session_state.tipe_aktif = "PG"
+                else: st.error(err)
 
+    if st.session_state.hasil_soal and st.session_state.tipe_aktif == "PG":
+        data = st.session_state.hasil_soal
+        docx = create_docx(data, "Pilihan Ganda", mapel, kelas, list_request_user)
+        st.download_button("📥 Download Word (.docx)", docx, file_name=f"Soal_PG_{mapel}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
-if st.session_state.hasil_soal:
+        for idx, item in enumerate(data):
+            info_req = list_request_user[idx]
+            with st.container(border=True):
+                if item.get('image_data'):
+                    st.image(item['image_data'], caption="Ilustrasi Soal", width=300)
+                elif item.get('image_prompt') and info_req['use_image']:
+                    st.warning("⚠️ Gagal memuat gambar (Koneksi Pollinations).")
+                
+                st.write(f"{idx+1}. {item['soal']}") 
+                
+                ans = st.radio(
+                    f"Label_hidden_{idx}",
+                    item['opsi'], 
+                    key=f"rad_{idx}", 
+                    index=None,
+                    label_visibility="collapsed"
+                )
+                
+                st.markdown(f"<div class='footer-info'>Materi: {info_req['topik']} | Kesulitan: {info_req['level']}</div>", unsafe_allow_html=True)
+                with st.expander("Kunci Jawaban"):
+                    if ans is None: st.info("Pilih jawaban dulu.")
+                    else:
+                        kunci = item['opsi'][item['kunci_index']]
+                        if ans == kunci: st.success("Benar!")
+                        else: st.error(f"Salah. Kunci: {kunci}")
+                        st.write(f"**Pembahasan:** {item['pembahasan']}")
 
-    data = st.session_state.hasil_soal
+# === TAB URAIAN ===
+with tab_uraian:
+    if st.button("🚀 Generate Soal Uraian", type="primary"):
+        if not api_key: st.error("Masukkan OpenAI API Key dulu!")
+        else:
+            with st.spinner("Sedang membuat soal uraian..."):
+                res, err = generate_soal_openai(api_key, "Uraian", kelas, mapel, list_request_user)
+                if res:
+                    st.session_state.hasil_soal = res
+                    st.session_state.tipe_aktif = "URAIAN"
+    
+    if st.session_state.hasil_soal and st.session_state.tipe_aktif == "URAIAN":
+        data = st.session_state.hasil_soal
+        docx = create_docx(data, "Uraian", mapel, kelas, list_request_user)
+        st.download_button("📥 Download Word (.docx)", docx, file_name=f"Soal_Uraian_{mapel}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
-    docx = create_docx(data, "Pilihan Ganda", Mata Pelajaran, Kelas)
+        for idx, item in enumerate(data):
+            info_req = list_request_user[idx]
+            with st.container(border=True):
+                if item.get('image_data'):
+                    st.image(item['image_data'], caption="Ilustrasi Soal", width=300)
 
-    st.download_button(
-        "Download Word",
-        docx,
-        file_name="Soal.docx"
-    )
-
-    for idx, item in enumerate(data):
-
-        st.subheader(f"Soal {idx+1}")
-
-        if item.get("image_data"):
-            st.image(item["image_data"], width=250)
-
-        st.write(item["soal"])
-
-        st.write("Pilihan:")
-        for op in item["opsi"]:
-            st.write(op)
-
-        st.info(f"Kunci: {item['opsi'][item['kunci_index']]}")
-        st.write(item["pembahasan"])
+                st.write(f"**Soal {idx+1}:** {item['soal']}")
+                st.markdown(f"<div class='footer-info'>Materi: {info_req['topik']} | Kesulitan: {info_req['level']}</div>", unsafe_allow_html=True)
+                st.text_area("Jawab:", height=80, key=f"essay_{idx}")
+                with st.expander("Lihat Kunci Guru"):
+                    st.write(item['pembahasan'])
 
 
 # --- 10. FOOTER COPYRIGHT ---
@@ -349,3 +379,4 @@ st.markdown("""
     <p style='margin: 3px 0;'>Semua hak cipta dilindungi undang-undang</p>
 </div>
 """, unsafe_allow_html=True)
+
