@@ -135,7 +135,8 @@ def generate_image(image_prompt):
 
 
 # --- FUNGSI GENERATE WORD ---
-def create_docx(data_soal, tipe, mapel, kelas):
+
+def create_docx(data_soal, tipe, mapel, kelas, list_request):
 
     doc = Document()
 
@@ -146,6 +147,8 @@ def create_docx(data_soal, tipe, mapel, kelas):
     doc.add_heading('A. SOAL', level=1)
 
     for idx, item in enumerate(data_soal):
+        req = list_request[idx]
+
         p = doc.add_paragraph()
         p.add_run(f"{idx+1}. {item['soal']}").bold = True
 
@@ -155,6 +158,9 @@ def create_docx(data_soal, tipe, mapel, kelas):
         if tipe == "Pilihan Ganda":
             for op in item['opsi']:
                 doc.add_paragraph(op)
+
+        info = doc.add_paragraph(f"Materi: {req['topik']} | Level: {req['level']}")
+        info.italic = True
 
         doc.add_paragraph()
 
@@ -331,3 +337,4 @@ st.markdown("""
     <p style='margin: 3px 0;'>Semua hak cipta dilindungi undang-undang</p>
 </div>
 """, unsafe_allow_html=True)
+
