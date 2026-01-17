@@ -2,6 +2,7 @@ import streamlit as st
 import json
 import requests
 import os
+import time
 from io import BytesIO
 from urllib.parse import quote
 from docx import Document
@@ -20,7 +21,6 @@ st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@700&family=Poppins:ital,wght@1,700&display=swap');
 
-    /* Header Styling */
     .header-title {
         font-family: 'League Spartan', sans-serif;
         font-size: 32px;
@@ -36,14 +36,10 @@ st.markdown("""
         color: #444;
         margin-bottom: 20px;
     }
-
-    /* Sidebar Gradient Background */
     [data-testid="stSidebar"] {
         background: linear-gradient(180deg, #e6f3ff 0%, #ffffff 100%);
         border-right: 1px solid #d1e3f3;
     }
-
-    /* Radio Button Label Styling */
     .stRadio [data-testid="stWidgetLabel"] p {
         font-weight: bold;
         font-size: 16px;
@@ -94,12 +90,12 @@ DATABASE_MATERI = {
 # --- 4. FUNGSI GAMBAR ---
 def construct_img_url(prompt):
     full_prompt = f"{prompt}, simple cartoon vector, educational illustration, white background"
-    return f"https://image.pollinations.ai/prompt/{quote(full_prompt)}?width=512&height=512&nologo=true&seed=42"
+    return f"https://image.pollinations.ai/prompt/{quote(full_prompt)}?width=512&height=512&nologo=true&seed={int(time.time())}"
 
 def safe_download_image(url):
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
-        resp = requests.get(url, headers=headers, timeout=10)
+        resp = requests.get(url, headers=headers, timeout=15)
         if resp.status_code == 200:
             return BytesIO(resp.content)
     except:
@@ -116,13 +112,11 @@ def create_docx(data_soal, mapel, kelas):
     for idx, item in enumerate(data_soal):
         p = doc.add_paragraph()
         p.add_run(f"{idx+1}. {item['soal']}").bold = True
-        
         if item.get('img_url'):
             img_data = safe_download_image(item['img_url'])
             if img_data:
                 try: doc.add_picture(img_data, width=Inches(2.5))
                 except: pass
-        
         for op in item['opsi']:
             doc.add_paragraph(op)
 
@@ -130,13 +124,12 @@ def create_docx(data_soal, mapel, kelas):
     doc.add_heading('B. KUNCI JAWABAN', level=1)
     for idx, item in enumerate(data_soal):
         doc.add_paragraph(f"No {idx+1}: {item['pembahasan']}")
-
     bio = BytesIO()
     doc.save(bio)
     bio.seek(0)
     return bio
 
-# --- 6. SIDEBAR (LOGO & CSS DIKUNCI) ---
+# --- 6. SIDEBAR (LOGO & GRADIENT DIKUNCI) ---
 with st.sidebar:
     if os.path.exists("logo.png"):
         c1, c2, c3 = st.columns([1, 2, 1])
@@ -152,7 +145,7 @@ with st.sidebar:
 
     kelas_sel = st.selectbox("Pilih Kelas", list(DATABASE_MATERI.keys()))
     mapel_sel = st.selectbox("Pilih Mata Pelajaran", list(DATABASE_MATERI[kelas_sel].keys()))
-    jml_soal = st.slider("Jumlah Soal", 1, 5, 2)
+    jml_soal = st.slider("Jumlah Soal", 1, 5, 1)
 
     req_details = []
     for i in range(jml_soal):
@@ -175,49 +168,75 @@ if 'hasil_soal' not in st.session_state:
 
 if btn_gen:
     client = OpenAI(api_key=api_key)
-    with st.spinner("Sedang meracik soal pilihan ganda..."):
-        # PROMPT DIPERKUAT UNTUK JSON MODE
-        prompt = f"""
-        Buatkan {jml_soal} soal pilihan ganda untuk SD Kelas {kelas_sel} Mata Pelajaran {mapel_sel}.
-        Setiap soal harus memiliki tingkat kesulitan yang berbeda sesuai permintaan.
-        
-        Berikan output dalam format JSON yang valid:
+    
+    # 1. GENERATE TEKS SOAL DAHULU
+    status_box = st.status("🚀 Memulai proses pembuatan soal...", expanded=True)
+    status_box.write("🧠 AI sedang meramu soal berdasarkan materi...")
+    
+    # Membangun rincian materi untuk prompt yang lebih tajam
+    materi_summary = ""
+    for i, req in enumerate(req_details):
+        materi_summary += f"- Soal {i+1}: Materi '{req['topik']}', Tingkat Kesulitan '{req['level']}'\n"
+
+    # PROMPT TAJAM ANDA
+    system_prompt = "Anda adalah seorang guru yang ahli dalam membuat soal-soal dan memiliki banyak bank soal untuk tingkat SD. Buatkan soal sesuai materi dan tingkat kesulitan/level yang ditentukan oleh system atau dipilih oleh user, ingat soal itu harus sesuai dengan materi dan level yang dipilih."
+    
+    user_prompt = f"""
+    Mata Pelajaran: {mapel_sel}
+    Kelas: {kelas_sel}
+    
+    Rincian Materi per Nomor:
+    {materi_summary}
+    
+    WAJIB memberikan output dalam format JSON yang valid:
+    {{
+      "soal_list": [
         {{
-          "soal_list": [
-            {{
-              "no": 1,
-              "soal": "isi pertanyaan",
-              "opsi": ["A. pilihan", "B. pilihan", "C. pilihan", "D. pilihan"],
-              "kunci_index": 0,
-              "pembahasan": "isi pembahasan",
-              "image_prompt": "simple english description for the picture"
-            }}
-          ]
+          "no": 1,
+          "soal": "pertanyaan",
+          "opsi": ["A. pilihan", "B. pilihan", "C. pilihan", "D. pilihan"],
+          "kunci_index": 0,
+          "pembahasan": "pembahasan sesuai materi",
+          "image_prompt": "simple english description of the object"
         }}
-        """
+      ]
+    }}
+    """
+    
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            response_format={"type": "json_object"}
+        )
         
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "Anda adalah asisten pembuat soal ujian yang hanya menjawab dengan format JSON murni."},
-                    {"role": "user", "content": prompt}
-                ],
-                response_format={"type": "json_object"} # PAKSA JSON MODE
-            )
+        data = json.loads(response.choices[0].message.content)["soal_list"]
+        
+        # 2. PROSES GAMBAR DENGAN BAR INDIKATOR
+        status_box.write("🎨 Menyiapkan ilustrasi gambar untuk setiap nomor...")
+        progress_bar = st.progress(0)
+        
+        for i, item in enumerate(data):
+            # Update bar bergerak
+            percent = int(((i + 1) / len(data)) * 100)
+            progress_bar.progress(percent)
             
-            res_json = json.loads(response.choices[0].message.content)
-            data = res_json["soal_list"]
-            
-            for i, item in enumerate(data):
-                item['img_url'] = None
-                # Sinkronkan dengan checkbox di sidebar
-                if i < len(req_details) and req_details[i]['use_image']:
-                    item['img_url'] = construct_img_url(item.get('image_prompt', 'educational illustration'))
-            
-            st.session_state.hasil_soal = data
-        except Exception as e:
-            st.error(f"Gagal memproses AI: {e}")
+            item['img_url'] = None
+            if i < len(req_details) and req_details[i]['use_image']:
+                status_box.write(f"🖼️ Sedang membuat gambar untuk soal nomor {i+1}...")
+                item['img_url'] = construct_img_url(item.get('image_prompt', 'educational illustration'))
+                time.sleep(1) # Jeda sedikit agar proses terlihat natural
+        
+        st.session_state.hasil_soal = data
+        progress_bar.empty() # Hapus bar setelah selesai
+        status_box.update(label="✅ Soal Berhasil Dibuat!", state="complete", expanded=False)
+        
+    except Exception as e:
+        status_box.update(label="❌ Terjadi kesalahan saat memproses AI", state="error")
+        st.error(f"Gagal: {e}")
 
 if st.session_state.hasil_soal:
     docx_file = create_docx(st.session_state.hasil_soal, mapel_sel, kelas_sel)
@@ -225,7 +244,6 @@ if st.session_state.hasil_soal:
     
     st.write("---")
     
-    # LOOP UNTUK MENAMPILKAN SETIAP SOAL
     for idx, item in enumerate(st.session_state.hasil_soal):
         with st.container(border=True):
             st.markdown(f"### Soal Nomor {item['no']}")
@@ -234,13 +252,7 @@ if st.session_state.hasil_soal:
             if item.get('img_url'):
                 st.image(item['img_url'], width=350, caption="Ilustrasi Soal")
             
-            # RADIO BUTTON INTERAKTIF
-            pilihan = st.radio(
-                "Pilih jawaban yang benar:",
-                item['opsi'],
-                key=f"ans_{idx}",
-                index=None
-            )
+            pilihan = st.radio("Pilih jawaban:", item['opsi'], key=f"ans_{idx}", index=None)
             
             if pilihan:
                 idx_user = item['opsi'].index(pilihan)
