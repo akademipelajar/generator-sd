@@ -4,7 +4,7 @@ import requests
 import os
 import time
 import matplotlib
-# Backend Agg agar stabil di server Streamlit
+# Backend Agg untuk stabilitas server Streamlit
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from io import BytesIO
@@ -78,6 +78,7 @@ def render_geometry(geo_data_list):
     ax = fig.add_subplot(111, projection='3d')
     if isinstance(geo_data_list, dict): geo_data_list = [geo_data_list]
     for obj in geo_data_list:
+        if not isinstance(obj, dict): continue
         p, l, t = float(obj.get('p', 5)), float(obj.get('l', 5)), float(obj.get('t', 5))
         ox, oy, oz = float(obj.get('off_x', 0)), float(obj.get('off_y', 0)), float(obj.get('off_z', 0))
         x, y, z = [ox, ox+p, ox+p, ox, ox, ox+p, ox+p, ox], [oy, oy, oy+l, oy+l, oy, oy, oy+l, oy+l], [oz, oz, oz, oz, oz+t, oz+t, oz+t, oz+t]
@@ -109,6 +110,7 @@ def construct_img_url(prompt):
 
 # --- 5. FUNGSI EKSTRAKSI & WORD ---
 def get_clean_options(item):
+    if not isinstance(item, dict): return ["A. [Error]", "B. [Error]", "C. [Error]", "D. [Error]"]
     opsi_raw = item.get('opsi') or item.get('pilihan') or item.get('options') or item.get('choices') or []
     labels = ['A', 'B', 'C', 'D']
     clean = []
@@ -117,7 +119,7 @@ def get_clean_options(item):
         t = str(text).strip()
         if t and not t.startswith(tuple(labels)): t = f"{labels[i]}. {t}"
         clean.append(t if t else f"{labels[i]}. [Kosong]")
-    while len(clean) < 4: clean.append(f"{labels[len(clean)]}. [N/A]")
+    while len(clean) < 4: clean.append(f"{labels[len(clean)]}. [Pilihan tidak tersedia]")
     return clean
 
 def create_docx(data_soal, mapel, kelas):
@@ -126,6 +128,7 @@ def create_docx(data_soal, mapel, kelas):
     doc.add_paragraph(f'Kelas: {kelas}')
     doc.add_heading('A. SOAL PILIHAN GANDA', level=1)
     for idx, item in enumerate(data_soal):
+        if not isinstance(item, dict): continue
         p = doc.add_paragraph(); p.add_run(f"{idx+1}. {item.get('soal','')}").bold = True
         if item.get('img_bytes'): doc.add_picture(BytesIO(item['img_bytes']), width=Inches(3.5))
         for op in get_clean_options(item): doc.add_paragraph(op)
@@ -133,6 +136,7 @@ def create_docx(data_soal, mapel, kelas):
         doc.add_paragraph("")
     doc.add_page_break(); doc.add_heading('B. KUNCI JAWABAN & PEMBAHASAN', level=1)
     for idx, item in enumerate(data_soal):
+        if not isinstance(item, dict): continue
         c_opsi = get_clean_options(item); k_idx = item.get('kunci_index', 0)
         pk = doc.add_paragraph(); pk.add_run(f"Nomor {idx+1}: ").bold = True
         pk.add_run(f"Jawaban {c_opsi[k_idx] if k_idx < 4 else 'N/A'}")
@@ -177,7 +181,7 @@ if btn_gen:
     status_box = st.status("✅ Soal Dalam Proses Pembuatan, Silahkan Ditunggu.", expanded=True)
     summary = "\n".join([f"- Soal {i+1}: {r['topik']} ({r['level']})" for i, r in enumerate(req_details)])
     
-    # --- PERSONA MASTER (JANTUNG SISTEM - DIKUNCI MATI) ---
+    # --- PERSONA MASTER CUMULATIVE (JANTUNG SISTEM) ---
     system_prompt = """Anda adalah Pakar Pengembang Kurikulum Merdeka Kemdikbud RI dan Penulis Bank Soal Profesional. 
     Wajib memberikan jawaban dalam format json murni.
 
@@ -189,12 +193,12 @@ if btn_gen:
     5. MATERI GEOMETRI (Kubus/Balok/Bangun Ruang): WAJIB sertakan key 'geometry_data' berupa LIST of objects berisi 'p', 'l', 't' (angka) dan 'off_x', 'off_y', 'off_z' (posisi). 
        Dilarang keras meminta ilustrasi internet untuk bangun ruang.
     6. SINKRONISASI: Angka di teks soal HARUS sama dengan angka di data visual (chart_data/geometry_data).
-    7. JSON STRUCTURE: Key utama 'soal_list' berisi 'soal', 'opsi', 'kunci_index', 'pembahasan', 'image_prompt' (untuk ilustrasi non-eksak)."""
+    7. JSON STRUCTURE: Key utama 'soal_list' berisi 'soal', 'opsi', 'kunci_index', 'pembahasan', 'image_prompt'."""
 
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": f"Buat json soal SD untuk: {mapel_sel}, Kelas: {kelas_sel}\n{summary}"}],
+            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": f"Berikan json soal SD Kurikulum Merdeka: {mapel_sel}, Kelas: {kelas_sel}\n{summary}"}],
             response_format={"type": "json_object"}
         )
         raw_res = json.loads(response.choices[0].message.content)
@@ -202,7 +206,10 @@ if btn_gen:
         if not data and isinstance(raw_res, list): data = raw_res
         
         pb = st.progress(0)
+        # Fix for 'str' object error: Ensure each element in data is a dictionary
+        valid_data = []
         for i, item in enumerate(data):
+            if not isinstance(item, dict): continue
             if i < len(req_details):
                 item['materi'], item['level'] = req_details[i]['topik'], req_details[i]['level']
                 item['img_bytes'] = None
@@ -214,14 +221,16 @@ if btn_gen:
                     else:
                         status_box.write("🖼️ Menyiapkan Ilustrasi..."); resp = requests.get(construct_img_url(item.get('image_prompt', 'education')))
                         if resp.status_code == 200: item['img_bytes'] = resp.content
+            valid_data.append(item)
             pb.progress(int(((i + 1) / len(data)) * 100))
-        st.session_state.hasil_soal = data; status_box.update(label="✅ Selesai!", state="complete", expanded=False)
+        st.session_state.hasil_soal = valid_data; status_box.update(label="✅ Selesai!", state="complete", expanded=False)
     except Exception as e: st.error(f"Gagal: {e}")
 
 # --- 9. TAMPILAN HASIL (DIKUNCI) ---
 if st.session_state.hasil_soal:
     st.download_button("📥 Download Word", create_docx(st.session_state.hasil_soal, mapel_sel, kelas_sel), f"Soal_{mapel_sel}.docx")
     for idx, item in enumerate(st.session_state.hasil_soal):
+        if not isinstance(item, dict): continue
         with st.container(border=True):
             st.markdown(f"### Soal {idx+1}\n**{item.get('soal','')}**")
             if item.get('img_bytes'): st.image(item['img_bytes'], width=500)
