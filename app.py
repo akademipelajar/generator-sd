@@ -71,7 +71,7 @@ DATABASE_MATERI = {
     }
 }
 
-# --- 4. FUNGSI VISUAL (GEOMETRY & CHART ENGINE) ---
+# --- 4. FUNGSI VISUAL (COMPOSITE GEOMETRY & CHART ENGINE) ---
 def render_geometry(geo_data_list):
     plt.close('all')
     fig = plt.figure(figsize=(5, 5))
@@ -108,7 +108,7 @@ def render_accurate_chart(chart_data, title="Data Matematika"):
 def construct_img_url(prompt):
     return f"https://image.pollinations.ai/prompt/{quote(prompt + ', simple high quality educational illustration, white background, no text')}?width=600&height=400&nologo=true&seed={int(time.time())}"
 
-# --- 5. FUNGSI EKSTRAKSI & WORD ---
+# --- 5. FUNGSI EKSTRAKSI OPSI ---
 def get_clean_options(item):
     if not isinstance(item, dict): return ["A. [Error]", "B. [Error]", "C. [Error]", "D. [Error]"]
     opsi_raw = item.get('opsi') or item.get('pilihan') or item.get('options') or item.get('choices') or []
@@ -122,13 +122,13 @@ def get_clean_options(item):
     while len(clean) < 4: clean.append(f"{labels[len(clean)]}. [Pilihan tidak tersedia]")
     return clean
 
+# --- 6. FUNGSI WORD ---
 def create_docx(data_soal, mapel, kelas):
     doc = Document()
     doc.add_heading(f'LATIHAN SOAL {mapel.upper()}', 0)
     doc.add_paragraph(f'Kelas: {kelas}')
     doc.add_heading('A. SOAL PILIHAN GANDA', level=1)
     for idx, item in enumerate(data_soal):
-        if not isinstance(item, dict): continue
         p = doc.add_paragraph(); p.add_run(f"{idx+1}. {item.get('soal','')}").bold = True
         if item.get('img_bytes'): doc.add_picture(BytesIO(item['img_bytes']), width=Inches(3.5))
         for op in get_clean_options(item): doc.add_paragraph(op)
@@ -136,14 +136,13 @@ def create_docx(data_soal, mapel, kelas):
         doc.add_paragraph("")
     doc.add_page_break(); doc.add_heading('B. KUNCI JAWABAN & PEMBAHASAN', level=1)
     for idx, item in enumerate(data_soal):
-        if not isinstance(item, dict): continue
         c_opsi = get_clean_options(item); k_idx = item.get('kunci_index', 0)
         pk = doc.add_paragraph(); pk.add_run(f"Nomor {idx+1}: ").bold = True
         pk.add_run(f"Jawaban {c_opsi[k_idx] if k_idx < 4 else 'N/A'}")
         doc.add_paragraph(f"Pembahasan: {item.get('pembahasan','')}")
     bio = BytesIO(); doc.save(bio); bio.seek(0); return bio
 
-# --- 6. SESSION STATE & SIDEBAR (DIKUNCI) ---
+# --- 7. SESSION STATE & SIDEBAR (DIKUNCI) ---
 if 'hasil_soal' not in st.session_state: st.session_state.hasil_soal = None
 if 'reset_counter' not in st.session_state: st.session_state.reset_counter = 0
 
@@ -170,35 +169,35 @@ with st.sidebar:
     if c2.button("🔄 Reset"):
         st.session_state.hasil_soal = None; st.session_state.reset_counter += 1; st.rerun()
 
-# --- 7. MAIN PAGE (DIKUNCI) ---
+# --- 8. HEADER & WARNING (DIKUNCI) ---
 st.markdown('<div class="header-title">Generator Soal SD</div>', unsafe_allow_html=True)
 st.markdown('<div class="header-sub">Berdasarkan Kurikulum Merdeka</div>', unsafe_allow_html=True)
 st.markdown('<div class="warning-text">⚠️ Batasan: Hanya 1 soal yang bisa menggunakan gambar/diagram per sesi agar akurasi tetap terjaga.</div>', unsafe_allow_html=True)
 st.write("---")
 
+# --- 9. JANTUNG LOGIKA (MASTER LOGIC - FIXED BLANK ISSUES) ---
 if btn_gen:
     client = OpenAI(api_key=api_key)
     status_box = st.status("✅ Soal Dalam Proses Pembuatan, Silahkan Ditunggu.", expanded=True)
     summary = "\n".join([f"- Soal {i+1}: {r['topik']} ({r['level']})" for i, r in enumerate(req_details)])
     
-    # --- PERSONA MASTER CUMULATIVE (JANTUNG SISTEM) ---
+    # PERSONA AKUMULATIF (LOCKED)
     system_prompt = """Anda adalah Pakar Pengembang Kurikulum Merdeka Kemdikbud RI dan Penulis Bank Soal Profesional. 
     Wajib memberikan jawaban dalam format json murni.
 
     ATURAN KETAT PERSONA & KONTEN:
     1. BAHASA: Wajib 100% Bahasa Indonesia formal sesuai tingkat kognitif anak SD (Fase A/B/C).
-    2. FORMAT OPSI: Wajib 4 pilihan (A-D) yang logis, mengecoh (High Quality Distractors), dan relevan.
-    3. PENDEKATAN: Gunakan konteks kehidupan sehari-hari anak Indonesia (Kontekstual). Untuk level 'Sulit', wajib soal analisis (HOTS).
-    4. MATERI DATA (Diagram Batang/Gambar/Lingkaran): WAJIB sertakan key 'chart_data' { "Label": angka }. Pertanyaan harus tentang 'Membaca Data Grafik'.
-    5. MATERI GEOMETRI (Kubus/Balok/Bangun Ruang): WAJIB sertakan key 'geometry_data' berupa LIST of objects berisi 'p', 'l', 't' (angka) dan 'off_x', 'off_y', 'off_z' (posisi). 
-       Dilarang keras meminta ilustrasi internet untuk bangun ruang.
-    6. SINKRONISASI: Angka di teks soal HARUS sama dengan angka di data visual (chart_data/geometry_data).
+    2. FORMAT OPSI: Wajib 4 pilihan (A-D) yang logis dan mengecoh.
+    3. PENDEKATAN: Gunakan konteks kehidupan nyata Indonesia. Level 'Sulit' wajib soal analisis (HOTS).
+    4. MATERI DATA (Diagram Batang/Gambar/Lingkaran): WAJIB sertakan key 'chart_data' { "Label": angka }. Pertanyaan tentang 'Membaca Data Grafik'.
+    5. MATERI GEOMETRI (Kubus/Balok/Bangun Ruang): WAJIB sertakan key 'geometry_data' berupa LIST of objects berisi 'p', 'l', 't' (angka) dan 'off_x', 'off_y', 'off_z'. Dilarang ilustrasi internet.
+    6. SINKRONISASI: Angka di teks soal HARUS sama dengan angka di data visual.
     7. JSON STRUCTURE: Key utama 'soal_list' berisi 'soal', 'opsi', 'kunci_index', 'pembahasan', 'image_prompt'."""
 
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": f"Berikan json soal SD Kurikulum Merdeka: {mapel_sel}, Kelas: {kelas_sel}\n{summary}"}],
+            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": f"Buat json soal SD Kurikulum Merdeka: {mapel_sel}, Kelas: {kelas_sel}\n{summary}"}],
             response_format={"type": "json_object"}
         )
         raw_res = json.loads(response.choices[0].message.content)
@@ -206,7 +205,6 @@ if btn_gen:
         if not data and isinstance(raw_res, list): data = raw_res
         
         pb = st.progress(0)
-        # Fix for 'str' object error: Ensure each element in data is a dictionary
         valid_data = []
         for i, item in enumerate(data):
             if not isinstance(item, dict): continue
@@ -223,10 +221,12 @@ if btn_gen:
                         if resp.status_code == 200: item['img_bytes'] = resp.content
             valid_data.append(item)
             pb.progress(int(((i + 1) / len(data)) * 100))
-        st.session_state.hasil_soal = valid_data; status_box.update(label="✅ Selesai!", state="complete", expanded=False)
+        
+        st.session_state.hasil_soal = valid_data
+        status_box.update(label="✅ Selesai!", state="complete", expanded=False)
     except Exception as e: st.error(f"Gagal: {e}")
 
-# --- 9. TAMPILAN HASIL (DIKUNCI) ---
+# --- 10. TAMPILAN HASIL (OUTSIDE GEN BLOCK - ANTI-BLANK) ---
 if st.session_state.hasil_soal:
     st.download_button("📥 Download Word", create_docx(st.session_state.hasil_soal, mapel_sel, kelas_sel), f"Soal_{mapel_sel}.docx")
     for idx, item in enumerate(st.session_state.hasil_soal):
@@ -241,6 +241,6 @@ if st.session_state.hasil_soal:
             elif pilih: st.error("❌ Salah.")
             with st.expander("Kunci & Pembahasan"): st.write(item.get('pembahasan',''))
 
-# --- 10. FOOTER (DIKUNCI TOTAL) ---
+# --- 11. FOOTER (DIKUNCI TOTAL) ---
 st.write("---")
 st.markdown("<div style='text-align: center; font-size: 12px;'><b><p>Aplikasi Generator Soal ini Milik Bimbingan Belajar Digital \"Akademi Pelajar\"</p><p>Dilarang menyebarluaskan tanpa persetujuan tertulis dari Akademi Pelajar</p><p>Semua hak cipta dilindungi undang-undang</p></b></div>", unsafe_allow_html=True)
