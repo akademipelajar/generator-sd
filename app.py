@@ -16,7 +16,7 @@ from openai import OpenAI
 # --- 1. KONFIGURASI HALAMAN ---
 st.set_page_config(page_title="Generator Soal SD", page_icon="📚", layout="wide")
 
-# --- 2. STYLE CSS (DIKUNCI TOTAL) ---
+# --- 2. STYLE CSS (DIKUNCI TOTAL: Font, Header, Sidebar, Metadata) ---
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@700&family=Poppins:ital,wght@1,700&display=swap');
@@ -70,7 +70,39 @@ DATABASE_MATERI = {
     }
 }
 
-# --- 4. FUNGSI VISUAL ---
+# --- 4. FUNGSI VISUAL (PERBAIKAN: GEOMETRY ENGINE) ---
+def render_geometry(geo_data, title="Visualisasi Bangun Ruang"):
+    """Menggambar Kubus/Balok secara matematis agar 100% akurat"""
+    plt.close('all')
+    fig = plt.figure(figsize=(5, 5))
+    ax = fig.add_subplot(111, projection='3d')
+    
+    p = float(geo_data.get('p', 5))
+    l = float(geo_data.get('l', 5))
+    t = float(geo_data.get('t', 5))
+    
+    # Koordinat titik sudut
+    x = [0, p, p, 0, 0, p, p, 0]
+    y = [0, 0, l, l, 0, 0, l, l]
+    z = [0, 0, 0, 0, t, t, t, t]
+    
+    # Garis pembentuk rangka
+    connections = [[0,1,2,3,0], [4,5,6,7,4], [0,4], [1,5], [2,6], [3,7]]
+    for conn in connections:
+        ax.plot([x[i] for i in conn], [y[i] for i in conn], [z[i] for i in conn], color='blue', linewidth=2)
+    
+    # Tambahkan Label Angka Akurat
+    ax.text(p/2, -0.5, 0, f"{int(p)} cm", color='red', fontweight='bold')
+    ax.text(p + 0.5, l/2, 0, f"{int(l)} cm", color='green', fontweight='bold')
+    ax.text(-0.5, 0, t/2, f"{int(t)} cm", color='purple', fontweight='bold')
+    
+    ax.set_axis_off()
+    plt.title(title, pad=20, fontsize=12, fontweight='bold')
+    buf = BytesIO()
+    plt.savefig(buf, format='png', bbox_inches='tight', dpi=100)
+    plt.close(fig)
+    return buf
+
 def render_accurate_chart(chart_data, title="Data Matematika"):
     plt.close('all')
     fig, ax = plt.subplots(figsize=(8, 4))
@@ -102,7 +134,7 @@ def safe_download_image(url):
     except: return None
     return None
 
-# --- 5. FUNGSI EKSTRAKSI OPSI ---
+# --- 5. FUNGSI EKSTRAKSI OPSI (VALIDATOR OPSI A-D) ---
 def get_clean_options(item):
     opsi_raw = item.get('opsi') or item.get('pilihan') or item.get('options') or item.get('choices') or []
     labels = ['A', 'B', 'C', 'D']
@@ -113,13 +145,13 @@ def get_clean_options(item):
         if t and not t.startswith(tuple(labels)):
             t = f"{labels[i]}. {t}"
         elif not t:
-            t = f"{labels[i]}. [Pilihan tidak tersedia]"
+            t = f"{labels[i]}. [Kosong]"
         clean.append(t)
-    if not clean:
-        clean = [f"{lbl}. [Gagal memuat pilihan]" for lbl in labels]
+    while len(clean) < 4:
+        clean.append(f"{labels[len(clean)]}. [Pilihan tidak tersedia]")
     return clean
 
-# --- 6. FUNGSI WORD (DENGAN KUNCI & JAWABAN LENGKAP) ---
+# --- 6. FUNGSI WORD (SOAL + KUNCI LENGKAP) ---
 def create_docx(data_soal, mapel, kelas):
     doc = Document()
     doc.add_heading(f'LATIHAN SOAL {mapel.upper()}', 0)
@@ -130,33 +162,25 @@ def create_docx(data_soal, mapel, kelas):
     for idx, item in enumerate(data_soal):
         p = doc.add_paragraph()
         p.add_run(f"{idx+1}. {item.get('soal','')}").bold = True
-        
         if item.get('img_bytes'):
             doc.add_picture(BytesIO(item['img_bytes']), width=Inches(3.5))
-        
         clean_opsi = get_clean_options(item)
         for op in clean_opsi:
             doc.add_paragraph(op)
-            
         meta = doc.add_paragraph(f"Materi : {item.get('materi','')} | Level : {item.get('level','')}")
         meta.italic = True
-        doc.add_paragraph("") # Spasi antar soal
+        doc.add_paragraph("")
 
-    # BAGIAN B: KUNCI JAWABAN (HALAMAN BARU)
+    # BAGIAN B: KUNCI (HALAMAN BARU)
     doc.add_page_break()
     doc.add_heading('B. KUNCI JAWABAN & PEMBAHASAN', level=1)
-    
     for idx, item in enumerate(data_soal):
-        clean_opsi = get_clean_options(item)
+        c_opsi = get_clean_options(item)
         k_idx = item.get('kunci_index', 0)
-        
-        # Ambil teks kunci jawaban yang benar
-        kunci_teks = clean_opsi[k_idx] if k_idx < len(clean_opsi) else "N/A"
-        
+        k_teks = c_opsi[k_idx] if k_idx < len(c_opsi) else "N/A"
         pk = doc.add_paragraph()
         pk.add_run(f"Nomor {idx+1}: ").bold = True
-        pk.add_run(f"Jawaban {kunci_teks}")
-        
+        pk.add_run(f"Jawaban {k_teks}")
         pp = doc.add_paragraph()
         pp.add_run("Pembahasan: ").italic = True
         pp.add_run(item.get('pembahasan', 'Tidak ada pembahasan.'))
@@ -194,7 +218,7 @@ with st.sidebar:
     btn_gen = c1.button("🚀 Generate", type="primary")
     if c2.button("🔄 Reset"):
         st.session_state.hasil_soal = None
-        st.session_counter = st.session_state.reset_counter + 1
+        st.session_state.reset_counter += 1 # Perbaikan logika reset sidebar
         st.rerun()
 
 # --- 8. MAIN PAGE ---
@@ -208,17 +232,20 @@ if btn_gen:
     status_box = st.status("✅ Soal Dalam Proses Pembuatan, Silahkan Ditunggu.", expanded=True)
     summary = "\n".join([f"- Soal {i+1}: {r['topik']} ({r['level']})" for i, r in enumerate(req_details)])
     
+    # PERSONA DIPERTAJAM UNTUK GEOMETRI AKURAT
     system_prompt = """Anda adalah Guru Matematika Senior & Pakar Evaluasi Kurikulum Merdeka Kemdikbud RI. 
     Wajib memberikan jawaban dalam format json murni.
-    TUGAS: Buat soal berkualitas tinggi. Jika materi diagram, wajib sertakan 'chart_data' { "Kategori": angka }.
-    DATA JSON: 'soal_list' berisi 'soal', 'opsi' (array 4 string), 'kunci_index' (0-3), dan 'pembahasan'."""
+    TUGAS AKURASI TINGGI:
+    1. Jika materi diagram, wajib sertakan 'chart_data' { "Kategori": angka }.
+    2. Jika materi Bangun Ruang (Volume/Luas), wajib sertakan 'geometry_data' { "type": "kubus", "p": angka, "l": angka, "t": angka }.
+    3. Angka di soal HARUS sama dengan angka di data visual."""
 
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_prompt}, 
-                {"role": "user", "content": f"Buat json soal untuk Mapel: {mapel_sel}, Kelas: {kelas_sel}\n{summary}"}
+                {"role": "user", "content": f"Buat json soal SD untuk: {mapel_sel}, Kelas: {kelas_sel}\n{summary}"}
             ],
             response_format={"type": "json_object"}
         )
@@ -229,7 +256,11 @@ if btn_gen:
                 item['materi'], item['level'] = req_details[i]['topik'], req_details[i]['level']
                 item['img_bytes'] = None
                 if req_details[i]['use_image']:
-                    if item.get('chart_data'):
+                    # LOGIKA HYBRID: Cek Diagram atau Geometri atau Ilustrasi
+                    if item.get('geometry_data'):
+                        status_box.write(f"📐 Merender Sketsa Geometri Akurat untuk {item['materi']}...")
+                        item['img_bytes'] = render_geometry(item['geometry_data'], title=f"Visualisasi {item['materi']}").getvalue()
+                    elif item.get('chart_data'):
                         status_box.write(f"📊 Merender Diagram Akurat...")
                         item['img_bytes'] = render_accurate_chart(item['chart_data'], title=f"Visualisasi {item['materi']}").getvalue()
                     else:
@@ -250,11 +281,9 @@ if st.session_state.hasil_soal:
         with st.container(border=True):
             st.markdown(f"### Soal {idx+1}\n**{item.get('soal','')}**")
             if item.get('img_bytes'): st.image(item['img_bytes'], width=500)
-            
             clean_opsi = get_clean_options(item)
             pilih = st.radio("Pilih Jawaban:", clean_opsi, key=f"ans_{idx}_{suffix}", index=None)
             st.markdown(f"<div class='metadata-text'>Materi : {item.get('materi','')} | Level : {item.get('level','')}</div>", unsafe_allow_html=True)
-            
             if pilih:
                 if clean_opsi.index(pilih) == item.get('kunci_index', 0): st.success("✅ Jawaban Anda Benar!")
                 else: st.error("❌ Jawaban Anda Salah.")
