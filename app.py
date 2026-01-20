@@ -24,7 +24,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 3. DATABASE MATERI LENGKAP (DIKUNCI) ---
+# --- 3. DATABASE MATERI LENGKAP (DIKUNCI TOTAL) ---
 DATABASE_MATERI = {
     "1 SD": {
         "Matematika": ["Bilangan sampai 10", "Penjumlahan & Pengurangan", "Bentuk Bangun Datar", "Mengukur Panjang Benda", "Mengenal Waktu"],
@@ -64,7 +64,7 @@ DATABASE_MATERI = {
     }
 }
 
-# --- 4. FUNGSI WORD (FORMAT MULTI-BENTUK) ---
+# --- 4. FUNGSI WORD (FORMAT MULTI-BENTUK & DETAIL PEMBAHASAN) ---
 def create_docx(data_soal, mapel, kelas):
     doc = Document()
     doc.add_heading(f'LATIHAN SOAL {mapel.upper()}', 0)
@@ -75,7 +75,6 @@ def create_docx(data_soal, mapel, kelas):
         p = doc.add_paragraph()
         p.add_run(f"{idx+1}. [{item.get('bentuk', '')}] {item.get('soal','')}\n").bold = True
         
-        # Rendering berdasarkan bentuk
         bentuk = item.get('bentuk')
         if bentuk == "PG Sederhana":
             for op in item.get('opsi', []): doc.add_paragraph(op, style='List Bullet')
@@ -84,20 +83,31 @@ def create_docx(data_soal, mapel, kelas):
             for op in item.get('opsi', []): doc.add_paragraph(f"☐ {op}")
         elif bentuk == "PG Kompleks Kategori":
             for kat in item.get('kategori_pernyataan', []):
-                doc.add_paragraph(f"• {kat['pernyataan']} (Benar / Salah)")
+                doc.add_paragraph(f"• {kat['pernyataan']} (...........)")
         elif bentuk == "Uraian":
-            doc.add_paragraph("....................................................................................................")
+            doc.add_paragraph("Jawaban: ............................................................................................")
             
-        doc.add_paragraph(f"Materi : {item.get('materi','')} | Level : {item.get('level','')}", style='Body Text').italic = True
+        meta = doc.add_paragraph(f"Materi : {item.get('materi','')} | Level : {item.get('level','')}")
+        meta.italic = True
         doc.add_paragraph("")
 
     doc.add_page_break()
-    doc.add_heading('B. KUNCI JAWABAN & PEMBAHASAN', level=1)
+    doc.add_heading('B. KUNCI JAWABAN & PEMBAHASAN DETAIL', level=1)
     for idx, item in enumerate(data_soal):
         doc.add_paragraph(f"Nomor {idx+1}:").bold = True
-        doc.add_paragraph(f"Jawaban: {item.get('kunci_jawaban_teks', '')}")
-        doc.add_paragraph(f"Pembahasan: {item.get('pembahasan', '')}")
-        doc.add_paragraph("-" * 20)
+        doc.add_paragraph(f"Bentuk: {item.get('bentuk', '')}")
+        
+        # Kunci Jawaban
+        kunci = item.get('kunci_jawaban_teks', '')
+        doc.add_paragraph(f"KUNCI: {kunci}").bold = False
+        
+        # Pembahasan Langkah demi Langkah
+        doc.add_paragraph("PEMBAHASAN:").bold = True
+        pembahasan_list = item.get('pembahasan_langkah', [])
+        for step in pembahasan_list:
+            doc.add_paragraph(f"- {step}")
+            
+        doc.add_paragraph("-" * 30)
         
     bio = BytesIO(); doc.save(bio); bio.seek(0); return bio
 
@@ -111,11 +121,11 @@ with st.sidebar:
         c1, c2, c3 = st.columns([1, 2, 1]); c2.image("logo.png", width=100)
     st.markdown("### ⚙️ Konfigurasi")
     api_key = st.secrets.get("OPENAI_API_KEY") or st.text_input("OpenAI API Key", type="password", key=f"api_{suffix}")
-    if not api_key: st.info("💡 Masukkan API Key untuk memulai."); st.stop()
+    if not api_key: st.info("💡 Masukkan API Key di sidebar untuk memulai."); st.stop()
     
     kelas_sel = st.selectbox("Pilih Kelas", list(DATABASE_MATERI.keys()), key=f"k_{suffix}")
     mapel_sel = st.selectbox("Mata Pelajaran", list(DATABASE_MATERI[kelas_sel].keys()), key=f"m_{suffix}")
-    jml_soal = st.slider("Jumlah Soal", 1, 10, 2, key=f"j_{suffix}")
+    jml_soal = st.slider("Jumlah Soal (Max 10)", 1, 10, 2, key=f"j_{suffix}")
     
     req_details = []
     for i in range(jml_soal):
@@ -130,78 +140,101 @@ with st.sidebar:
     if c2.button("🔄 Reset"):
         st.session_state.hasil_soal = None; st.session_state.reset_counter += 1; st.rerun()
 
-# --- 6. MAIN PAGE (DIKUNCI) ---
+# --- 6. MAIN PAGE HEADER ---
 st.markdown('<div class="header-title">Generator Soal SD</div>', unsafe_allow_html=True)
 st.markdown('<div class="header-sub">Berdasarkan Kurikulum Merdeka</div>', unsafe_allow_html=True)
 st.write("---")
 
-# --- 7. PERSONA & LOGIKA JANTUNG (AKUMULATIF HOTS) ---
+# --- 7. PERSONA MASTER & LOGIKA PEMBAHASAN (AKUMULATIF) ---
 if btn_gen:
     client = OpenAI(api_key=api_key)
     status_box = st.status("✅ Soal Dalam Proses Pembuatan, Silahkan Ditunggu.", expanded=True)
     summary = "\n".join([f"- Soal {i+1}: {r['topik']}, Level: {r['level']}, Bentuk: {r['bentuk']}" for i, r in enumerate(req_details)])
     
+    # PERSONA DIKUNCI & DIPERTAJAM UNTUK PEMBAHASAN
     system_prompt = """Anda adalah Pakar Pengembang Kurikulum Merdeka Kemdikbud RI dan Penulis Bank Soal Profesional. 
     Wajib memberikan jawaban dalam format json murni.
 
     KARAKTERISTIK SOAL HOTS (Level Sulit):
-    1. Mengukur Kemampuan Kognitif Tinggi: Menganalisis (C4), mengevaluasi (C5), menciptakan (C6).
-    2. Melampaui Hafalan: Tidak boleh hanya menanyakan definisi atau fakta mati.
-    3. Critical Thinking: Wajib melatih berpikir kritis, mencari kaitan informasi, dan mengambil keputusan.
-    4. Aplikasi Konsep: Memecahkan situasi baru/nyata yang belum pernah ditemui sebelumnya.
-    5. Stimulus Kompleks: Gunakan kasus, data tabel, atau teks narasi singkat sebagai pemicu soal.
+    - Mengukur kognitif tinggi: Menganalisis, mengevaluasi, menciptakan.
+    - Kontekstual: Menggunakan narasi dunia nyata/kasus sehari-hari anak Indonesia.
+    - Stimulus: Gunakan informasi yang menuntut murid berpikir kritis sebelum menjawab.
 
-    BENTUK SOAL AKM:
-    - PG Sederhana: 4 opsi (A-D), 1 benar.
-    - PG Kompleks: Lebih dari 1 jawaban benar.
-    - PG Kompleks Kategori: Daftar pernyataan yang harus direspon Benar/Salah atau Sesuai/Tidak Sesuai.
-    - Uraian: Pertanyaan terbuka yang membutuhkan jawaban deskriptif.
+    ATURAN PEMBAHASAN:
+    - Wajib mendalam dan langkah demi langkah (Step-by-Step).
+    - Susun pembahasan sebagai list/array teks yang logis (bukan paragraf panjang).
 
-    JSON STRUCTURE: Key 'soal_list' berisi array of objects. 
-    Field wajib per objek: 'no', 'soal', 'bentuk', 'materi', 'level', 'pembahasan', 'kunci_jawaban_teks'.
-    - Field tambahan untuk PG/PG Kompleks: 'opsi' (array), 'kunci_index' (array of integers).
-    - Field tambahan untuk PG Kategori: 'kategori_pernyataan' [ { 'pernyataan': '', 'kunci': '' } ]."""
+    JSON STRUCTURE:
+    {
+      "soal_list": [
+        {
+          "no": 1,
+          "soal": "...",
+          "bentuk": "...",
+          "materi": "...",
+          "level": "...",
+          "kunci_jawaban_teks": "Ringkasan kunci jawaban",
+          "pembahasan_langkah": ["Langkah 1: ...", "Langkah 2: ...", "Langkah 3: ..."],
+          "opsi": ["A...", "B...", "C...", "D..."],
+          "kategori_pernyataan": [{"pernyataan": "...", "kunci": "Benar/Salah"}]
+        }
+      ]
+    }"""
 
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": f"Buat 100% Bahasa Indonesia soal SD Kurikulum Merdeka sesuai rincian berikut:\n{summary}\nOutput wajib json murni."}],
+            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": f"Buat json soal SD Kurikulum Merdeka sesuai rincian:\n{summary}"}],
             response_format={"type": "json_object"}
         )
         data = json.loads(response.choices[0].message.content).get("soal_list", [])
         st.session_state.hasil_soal = data
-        status_box.update(label="✅ Soal Selesai Dibuat!", state="complete", expanded=False)
+        status_box.update(label="✅ Soal Berhasil Dibuat!", state="complete", expanded=False)
     except Exception as e: st.error(f"Gagal: {e}")
 
 # --- 8. TAMPILAN HASIL (LOCKED UI) ---
 if st.session_state.hasil_soal:
-    st.download_button("📥 Download Word", create_docx(st.session_state.hasil_soal, mapel_sel, kelas_sel), f"Soal_HOTS_{mapel_sel}.docx")
+    st.download_button("📥 Download Word", create_docx(st.session_state.hasil_soal, mapel_sel, kelas_sel), f"Soal_Master_{mapel_sel}.docx")
     
     for idx, item in enumerate(st.session_state.hasil_soal):
         with st.container(border=True):
-            st.markdown(f"### Soal {item.get('no', idx+1)} ({item.get('bentuk', '')})")
+            st.markdown(f"### Soal {idx+1} ({item.get('bentuk', '')})")
             st.markdown(f"**{item.get('soal','')}**")
             
-            # Handler berdasarkan bentuk soal
             bentuk = item.get('bentuk')
             if bentuk == "PG Sederhana":
-                st.radio("Pilih satu jawaban:", item.get('opsi', []), key=f"ans_{idx}_{suffix}", index=None)
+                st.radio("Pilih jawaban:", item.get('opsi', []), key=f"ans_{idx}_{suffix}", index=None)
             elif bentuk == "PG Kompleks":
-                st.write("Pilih jawaban (bisa lebih dari satu):")
                 for o_idx, opt in enumerate(item.get('opsi', [])):
                     st.checkbox(opt, key=f"chk_{idx}_{o_idx}_{suffix}")
             elif bentuk == "PG Kompleks Kategori":
                 for k_idx, kat in enumerate(item.get('kategori_pernyataan', [])):
                     st.radio(f"Pernyataan: {kat['pernyataan']}", ["Benar", "Salah"], key=f"kat_{idx}_{k_idx}_{suffix}", horizontal=True, index=None)
             elif bentuk == "Uraian":
-                st.text_area("Tuliskan jawaban Anda:", key=f"txt_{idx}_{suffix}")
+                st.text_area("Tuliskan jawaban:", key=f"txt_{idx}_{suffix}")
 
+            # METADATA DIKUNCI (Bold & Italic)
             st.markdown(f"<div class='metadata-text'>Materi : {item.get('materi','')} | Level : {item.get('level','')}</div>", unsafe_allow_html=True)
             
-            with st.expander("Lihat Kunci & Pembahasan"):
-                st.info(f"Kunci: {item.get('kunci_jawaban_teks','')}")
-                st.write(item.get('pembahasan',''))
+            with st.expander("Lihat Kunci & Pembahasan Langkah demi Langkah"):
+                # Menampilkan kunci khusus untuk kategori
+                if bentuk == "PG Kompleks Kategori":
+                    st.markdown("**Kunci Pernyataan:**")
+                    for kat in item.get('kategori_pernyataan', []):
+                        st.write(f"- {kat['pernyataan']}: **{kat['kunci']}**")
+                else:
+                    st.success(f"**Kunci Jawaban:** {item.get('kunci_jawaban_teks','')}")
+                
+                st.markdown("**Pembahasan:**")
+                for step in item.get('pembahasan_langkah', []):
+                    st.write(f"✅ {step}")
 
 # --- 9. FOOTER (DIKUNCI TOTAL) ---
 st.write("---")
-st.markdown("<div style='text-align: center; font-size: 12px;'><b><p>Aplikasi Generator Soal ini Milik Bimbingan Belajar Digital \"Akademi Pelajar\"</p><p>Dilarang menyebarluaskan tanpa persetujuan tertulis dari Akademi Pelajar</p><p>Semua hak cipta dilindungi undang-undang</p></b></div>", unsafe_allow_html=True)
+st.markdown("""
+<div style='text-align: center; font-size: 12px;'>
+    <b><p>Aplikasi Generator Soal ini Milik Bimbingan Belajar Digital "Akademi Pelajar"</p></b>
+    <b><p>Dilarang menyebarluaskan tanpa persetujuan tertulis dari Akademi Pelajar</p></b>
+    <b><p>Semua hak cipta dilindungi undang-undang</p></b>
+</div>
+""", unsafe_allow_html=True)
