@@ -5,7 +5,6 @@ import time
 from io import BytesIO
 from docx import Document
 from docx.shared import Inches, Pt, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 from openai import OpenAI
@@ -24,8 +23,8 @@ st.markdown("""
     .stRadio [data-testid="stWidgetLabel"] p, .stCheckbox p { font-weight: bold; font-size: 16px; color: #1E1E1E; }
     .metadata-text { font-size: 12px; font-style: italic; font-family: 'Poppins', sans-serif; font-weight: bold; color: #555; margin-top: 10px; margin-bottom: 15px;}
     div.stButton > button { width: 100%; }
-    /* Table Styling for UI */
     .table-header { background-color: #d1e3f3; padding: 10px; font-weight: bold; border: 1px solid #dee2e6; text-align: center; }
+    .table-cell { padding: 10px; border: 1px solid #dee2e6; text-align: left; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -77,24 +76,19 @@ LABEL_BENTUK = {
 }
 
 # --- 4. HELPER FUNCTIONS ---
-def get_clean_options(item):
-    opsi_raw = item.get('opsi') or []
-    labels = ['A', 'B', 'C', 'D']
-    clean = []
-    for i, text in enumerate(opsi_raw):
-        if i >= 4: break
-        t = str(text).strip()
-        if t and not t.startswith(tuple(labels)): t = f"{labels[i]}. {t}"
-        clean.append(t if t else f"{labels[i]}. [Kosong]")
-    while len(clean) < 4: clean.append(f"{labels[len(clean)]}. [N/A]")
-    return clean
-
 def set_table_header_bg(cell):
     shading_elm = OxmlElement('w:shd')
     shading_elm.set(qn('w:fill'), 'D1E3F3')
     cell._tc.get_or_add_tcPr().append(shading_elm)
 
-# --- 5. FUNGSI WORD (DIKUNCI: TABLE FORMAT ADDED) ---
+def get_safe_data(item, keys, default=[]):
+    """Fungsi pengaman untuk mencari data jika AI salah tulis nama field"""
+    for key in keys:
+        if key in item and item[key]:
+            return item[key]
+    return default
+
+# --- 5. FUNGSI WORD (DIKUNCI TOTAL) ---
 def create_docx(data_soal, mapel, kelas):
     doc = Document()
     doc.add_heading(f'LATIHAN SOAL {mapel.upper()}', 0)
@@ -102,28 +96,30 @@ def create_docx(data_soal, mapel, kelas):
     doc.add_heading('A. DAFTAR SOAL', level=1)
     
     for idx, item in enumerate(data_soal):
-        bentuk = item.get('bentuk', '')
+        bentuk = item.get('bentuk', 'PG Sederhana')
+        keterangan = LABEL_BENTUK.get(bentuk, "")
         p = doc.add_paragraph()
-        p.add_run(f"Soal {idx+1} ({LABEL_BENTUK.get(bentuk, '')})").italic = True
+        p.add_run(f"Soal {idx+1} ({keterangan})").italic = True
         doc.add_paragraph(item.get('soal',''), style='Normal').bold = True
         
         if bentuk == "PG Sederhana":
-            for op in get_clean_options(item): doc.add_paragraph(op)
+            opsi = get_safe_data(item, ['opsi', 'pilihan', 'options'])
+            for op in opsi: doc.add_paragraph(op)
         elif bentuk == "PG Kompleks":
-            for op in get_clean_options(item): doc.add_paragraph(f"☐ {op}")
+            opsi = get_safe_data(item, ['opsi', 'pilihan', 'options'])
+            for op in opsi: doc.add_paragraph(f"☐ {op}")
         elif bentuk == "PG Kompleks Kategori":
             table = doc.add_table(rows=1, cols=3)
             table.style = 'Table Grid'
-            hdr_cells = table.rows[0].cells
-            hdr_cells[0].text = 'Pernyataan'
-            hdr_cells[1].text = 'Benar'
-            hdr_cells[2].text = 'Salah'
-            for cell in hdr_cells: set_table_header_bg(cell)
+            hdr = table.rows[0].cells
+            hdr[0].text, hdr[1].text, hdr[2].text = 'Pernyataan', 'Benar', 'Salah'
+            for cell in hdr: set_table_header_bg(cell)
             
+            p_list = get_safe_data(item, ['kategori_pernyataan', 'pernyataan_list'])
             labels = ['A', 'B', 'C', 'D']
-            for i, kat in enumerate(item.get('kategori_pernyataan', [])):
-                row_cells = table.add_row().cells
-                row_cells[0].text = f"{labels[i]}. {kat['pernyataan']}"
+            for i, kat in enumerate(p_list):
+                row = table.add_row().cells
+                row[0].text = f"{labels[i]}. {kat.get('pernyataan','')}"
         elif bentuk == "Uraian":
             doc.add_paragraph("Jawaban: ...................................................................")
             
@@ -136,7 +132,8 @@ def create_docx(data_soal, mapel, kelas):
         doc.add_paragraph(f"Nomor {idx+1}:").bold = True
         doc.add_paragraph(f"KUNCI: {item.get('kunci_jawaban_teks', '')}")
         doc.add_paragraph("PEMBAHASAN:")
-        for step in item.get('pembahasan_langkah', []): doc.add_paragraph(f"• {step}")
+        langkah = get_safe_data(item, ['pembahasan_langkah', 'langkah_pembahasan'])
+        for step in langkah: doc.add_paragraph(f"• {step}")
         doc.add_paragraph(item.get('kesimpulan_akhir', '')).bold = True
         doc.add_paragraph("-" * 20)
         
@@ -176,27 +173,36 @@ st.markdown('<div class="header-title">Generator Soal SD</div>', unsafe_allow_ht
 st.markdown('<div class="header-sub">Berdasarkan Kurikulum Merdeka</div>', unsafe_allow_html=True)
 st.write("---")
 
-# --- 8. PERSONA & LOGIKA JANTUNG (LOCKED & ACCUMULATIVE) ---
+# --- 8. PERSONA MASTER & LOGIKA JANTUNG (SANGAT KETAT) ---
 if btn_gen:
     client = OpenAI(api_key=api_key)
     status_box = st.status("✅ Soal Dalam Proses Pembuatan, Silahkan Ditunggu.", expanded=True)
-    summary = "\n".join([f"- Soal {i+1}: {r['topik']}, Level: {r['level']}, Bentuk: {r['bentuk']}" for i, r in enumerate(req_details)])
+    summary = "\n".join([f"- Soal {i+1}: {r['topik']}, {r['level']}, {r['bentuk']}" for i, r in enumerate(req_details)])
     
     system_prompt = """Anda adalah Pakar Pengembang Kurikulum Merdeka Kemdikbud RI dan Penulis Bank Soal Profesional. 
     Wajib memberikan jawaban dalam format json murni.
 
     KARAKTERISTIK SOAL HOTS:
-    - Kognitif Tinggi: Menganalisis, mengevaluasi, menciptakan. Bukan hafalan.
-    - Kontekstual: Menggunakan stimulus kompleks dunia nyata.
+    - Analisis (C4-C6), Kontekstual dunia nyata Indonesia, Berpikir Kritis.
 
     ATURAN KETAT BENTUK SOAL:
-    1. PG Kompleks: Minimal 2 jawaban benar. Kunci (kunci_jawaban_teks) wajib sebutkan huruf (A, B, C, dst).
-    2. PG Kompleks Kategori: Pernyataan wajib diberi label abjad A, B, C, D di depannya. Hubungan Benar/Salah harus logis terhadap stimulus.
-    
-    ATURAN PEMBAHASAN:
-    - Wajib detail per langkah, disusun ke bawah.
-    - Khusus Kategori: Jelaskan alasan per poin pernyataan (A, B, C, D) kenapa Benar atau Salah.
-    - Kesimpulan Akhir: Gunakan field 'kesimpulan_akhir' -> 'Jadi, jawaban yang benar adalah...'"""
+    1. PG Kompleks: Kunci (kunci_jawaban_teks) wajib menyebutkan huruf yang benar (A, C, dst). Minimal 2 benar.
+    2. PG Kompleks Kategori: Pernyataan wajib A, B, C, D. Jelaskan alasan tiap poin di pembahasan.
+    3. Kesimpulan: Wajib ada field 'kesimpulan_akhir' -> 'Jadi, jawaban yang benar adalah...'
+
+    JSON STRUCTURE:
+    {
+      "soal_list": [
+        {
+          "no": 1, "soal": "...", "bentuk": "...", "materi": "...", "level": "...",
+          "kunci_jawaban_teks": "...",
+          "pembahasan_langkah": ["Step 1", "Step 2"],
+          "kesimpulan_akhir": "Jadi, jawaban yang benar adalah...",
+          "opsi": ["A...", "B...", "C...", "D..."],
+          "kategori_pernyataan": [{"pernyataan": "...", "kunci": "Benar/Salah", "alasan": "..."}]
+        }
+      ]
+    }"""
 
     try:
         response = client.chat.completions.create(
@@ -204,38 +210,37 @@ if btn_gen:
             messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": f"Buat json soal SD Kurikulum Merdeka:\n{summary}"}],
             response_format={"type": "json_object"}
         )
-        data = json.loads(response.choices[0].message.content).get("soal_list", [])
-        st.session_state.hasil_soal = data
+        st.session_state.hasil_soal = json.loads(response.choices[0].message.content).get("soal_list", [])
         status_box.update(label="✅ Soal Berhasil Dibuat!", state="complete", expanded=False)
     except Exception as e: st.error(f"Gagal: {e}")
 
-# --- 9. TAMPILAN HASIL (UI TABLE SIMULATION) ---
+# --- 9. TAMPILAN HASIL (OUTSIDE BLOCK - ANTI-BLANK) ---
 if st.session_state.hasil_soal:
-    st.download_button("📥 Download Word", create_docx(st.session_state.hasil_soal, mapel_sel, kelas_sel), f"Soal_AKM_{mapel_sel}.docx")
+    st.download_button("📥 Download Word", create_docx(st.session_state.hasil_soal, mapel_sel, kelas_sel), f"Bank_Soal_{mapel_sel}.docx")
     
     for idx, item in enumerate(st.session_state.hasil_soal):
         with st.container(border=True):
-            bentuk = item.get('bentuk')
+            bentuk = item.get('bentuk', 'PG Sederhana')
             st.markdown(f"#### Soal {idx+1} *({LABEL_BENTUK.get(bentuk)})*")
             st.markdown(f"**{item.get('soal','')}**")
             
             if bentuk == "PG Sederhana":
-                st.radio("Pilih jawaban:", get_clean_options(item), key=f"ans_{idx}_{suffix}", index=None)
+                st.radio("Pilih jawaban:", get_safe_data(item, ['opsi', 'pilihan']), key=f"ans_{idx}_{suffix}", index=None)
             elif bentuk == "PG Kompleks":
-                for o_idx, opt in enumerate(get_clean_options(item)):
+                for o_idx, opt in enumerate(get_safe_data(item, ['opsi', 'pilihan'])):
                     st.checkbox(opt, key=f"chk_{idx}_{o_idx}_{suffix}")
             elif bentuk == "PG Kompleks Kategori":
-                # Header Tabel di UI
+                # Simulasi Tabel di UI
                 h1, h2, h3 = st.columns([4, 1, 1])
                 h1.markdown("<div class='table-header'>Pernyataan</div>", unsafe_allow_html=True)
                 h2.markdown("<div class='table-header'>Benar</div>", unsafe_allow_html=True)
                 h3.markdown("<div class='table-header'>Salah</div>", unsafe_allow_html=True)
                 
+                p_list = get_safe_data(item, ['kategori_pernyataan', 'pernyataan_list'])
                 labels = ['A', 'B', 'C', 'D']
-                for k_idx, kat in enumerate(item.get('kategori_pernyataan', [])):
+                for k_idx, kat in enumerate(p_list):
                     c1, c2, c3 = st.columns([4, 1, 1])
-                    c1.write(f"{labels[k_idx]}. {kat['pernyataan']}")
-                    # Menggunakan checkbox tunggal sebagai pengganti radio agar mirip tabel
+                    c1.markdown(f"<div class='table-cell'>{labels[k_idx]}. {kat.get('pernyataan','')}</div>", unsafe_allow_html=True)
                     with c2: st.checkbox(" ", key=f"b_{idx}_{k_idx}_{suffix}", label_visibility="collapsed")
                     with c3: st.checkbox(" ", key=f"s_{idx}_{k_idx}_{suffix}", label_visibility="collapsed")
             elif bentuk == "Uraian": st.text_area("Tuliskan jawaban:", key=f"txt_{idx}_{suffix}")
@@ -245,13 +250,15 @@ if st.session_state.hasil_soal:
             with st.expander("Lihat Kunci & Pembahasan Mendalam"):
                 if bentuk == "PG Kompleks Kategori":
                     st.markdown("**Analisis Pernyataan:**")
-                    for k_idx, kat in enumerate(item.get('kategori_pernyataan', [])):
-                        st.write(f"• **{labels[k_idx]}**: {kat['kunci']} → {kat.get('alasan','')}")
+                    p_list = get_safe_data(item, ['kategori_pernyataan', 'pernyataan_list'])
+                    for k_idx, kat in enumerate(p_list):
+                        st.write(f"• **{labels[k_idx]}**: {kat.get('kunci','')} → {kat.get('alasan','')}")
                 else:
                     st.success(f"**Kunci:** {item.get('kunci_jawaban_teks','')}")
                 
                 st.markdown("**Langkah Pembahasan:**")
-                for step in item.get('pembahasan_langkah', []): st.write(f"✅ {step}")
+                langkah = get_safe_data(item, ['pembahasan_langkah', 'langkah_pembahasan'])
+                for step in langkah: st.write(f"✅ {step}")
                 st.info(f"**Kesimpulan:** {item.get('kesimpulan_akhir','')}")
 
 # --- 10. FOOTER (DIKUNCI TOTAL) ---
