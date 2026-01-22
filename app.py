@@ -2,12 +2,7 @@ import streamlit as st
 import json
 import os
 import time
-import matplotlib
-# Backend Agg untuk stabilitas server
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
 from io import BytesIO
-from urllib.parse import quote
 from docx import Document
 from docx.shared import Inches, Pt, RGBColor
 from docx.oxml.ns import qn
@@ -15,10 +10,85 @@ from docx.oxml import OxmlElement
 from openai import OpenAI
 from supabase import create_client
 
-# --- 1. SETUP UI AWAL (WAJIB DI ATAS AGAR ANTI-BLANK) ---
+# ==========================================
+# --- 1. INITIAL SETUP & CONFIG (LOCKED) ---
+# ==========================================
 st.set_page_config(page_title="Generator Soal SD", page_icon="📚", layout="wide")
 
-# STYLE CSS (DIKUNCI TOTAL: Spartan, Poppins, Gradient Sidebar, Metadata)
+# Supabase Client Init
+try:
+    supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_ANON_KEY"])
+except Exception as e:
+    st.error("Konfigurasi Supabase bermasalah. Cek Secrets.")
+    st.stop()
+
+# Initialize Session State
+if "user" not in st.session_state: st.session_state.user = None
+if 'hasil_soal' not in st.session_state: st.session_state.hasil_soal = None
+if 'reset_counter' not in st.session_state: st.session_state.reset_counter = 0
+
+# ==========================================
+# --- 2. AUTHENTICATION GATE (ANTI-DUPLICATE) ---
+# ==========================================
+
+# Cek session di latar belakang
+if st.session_state.user is None:
+    try:
+        user_res = supabase.auth.get_user()
+        if user_res and user_res.user:
+            st.session_state.user = user_res.user
+    except: pass
+
+# Tampilan Gerbang Login
+if st.session_state.user is None:
+    # Header Desain Tetap Muncul di Atas Login
+    st.markdown("""<style>
+        @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@700&family=Poppins:ital,wght@1,700&display=swap');
+        .header-title { font-family: 'League Spartan', sans-serif; font-size: 32px; font-weight: bold; line-height: 1.2; color: #1E1E1E; }
+        .header-sub { font-family: 'Poppins', sans-serif; font-size: 18px; font-weight: bold; font-style: italic; color: #444; margin-bottom: 5px; }
+    </style>""", unsafe_allow_html=True)
+    st.markdown('<div class="header-title">Generator Soal SD</div>', unsafe_allow_html=True)
+    st.markdown('<div class="header-sub">Berdasarkan Kurikulum Merdeka</div>', unsafe_allow_html=True)
+    st.write("---")
+
+    c1, c2, c3 = st.columns([1, 2, 1])
+    with c2:
+        st.title("🔐 Akses Akademi Pelajar")
+        t1, t2, t3 = st.tabs(["Login", "Daftar", "Lupa Password"])
+        with t1:
+            le = st.text_input("Email", key="auth_email_main")
+            lp = st.text_input("Password", type="password", key="auth_pass_main")
+            if st.button("Masuk", key="auth_btn_main"):
+                try:
+                    res = supabase.auth.sign_in_with_password({"email": le, "password": lp})
+                    st.session_state.user = res.user
+                    st.rerun()
+                except Exception as e: st.error(f"Gagal: {str(e)}")
+        with t2:
+            re = st.text_input("Email Baru", key="reg_email_main")
+            rp = st.text_input("Password Baru", type="password", key="reg_pass_main")
+            if st.button("Daftar Sekarang", key="reg_btn_main"):
+                try:
+                    supabase.auth.sign_up({"email": re, "password": rp})
+                    st.success("✅ Berhasil! Silakan login.")
+                except Exception as e: st.error(f"Gagal: {str(e)}")
+        with t3:
+            fe = st.text_input("Email Terdaftar", key="fgt_email_main")
+            if st.button("Kirim Link Reset", key="fgt_btn_main"):
+                try:
+                    supabase.auth.reset_password_for_email(fe, {"redirect_to": "https://generator-sd.streamlit.app"})
+                    st.success("📩 Link telah dikirim!")
+                except Exception as e: st.error(f"Gagal: {str(e)}")
+    
+    st.write("---")
+    st.markdown("<div style='text-align: center; font-size: 12px;'><b><p>Aplikasi Generator Soal ini Milik Bimbingan Belajar Digital \"Akademi Pelajar\"</p><p>Dilarang menyebarluaskan tanpa persetujuan tertulis dari Akademi Pelajar</p><p>Semua hak cipta dilindungi undang-undang</p></b></div>", unsafe_allow_html=True)
+    st.stop()
+
+# ==========================================
+# --- 3. APLIKASI UTAMA (HANYA JALAN JIKA LOGIN) ---
+# ==========================================
+
+# STYLE CSS (LOCKED)
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@700&family=Poppins:ital,wght@1,700&display=swap');
@@ -34,68 +104,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# HEADER DESAIN (DIKUNCI)
-st.markdown('<div class="header-title">Generator Soal SD</div>', unsafe_allow_html=True)
-st.markdown('<div class="header-sub">Berdasarkan Kurikulum Merdeka</div>', unsafe_allow_html=True)
-st.markdown('<div class="warning-text">⚠️ Batasan: Hanya 1 soal yang bisa menggunakan gambar/diagram per sesi agar akurasi tetap terjaga.</div>', unsafe_allow_html=True)
-st.write("---")
-
-# --- 2. AUTHENTICATION GATE (FIXED LOGIC) ---
-try:
-    supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_ANON_KEY"])
-except:
-    st.error("Konfigurasi Supabase bermasalah di Secrets.")
-    st.stop()
-
-if "user" not in st.session_state: st.session_state.user = None
-if 'hasil_soal' not in st.session_state: st.session_state.hasil_soal = None
-if 'reset_counter' not in st.session_state: st.session_state.reset_counter = 0
-
-# Cek session di awal tanpa memotong UI utama
-def check_auth():
-    if st.session_state.user is None:
-        try:
-            res = supabase.auth.get_user()
-            if res and res.user: st.session_state.user = res.user
-        except: pass
-
-check_auth()
-
-if st.session_state.user is None:
-    c1, c2, c3 = st.columns([1, 2, 1])
-    with c2:
-        st.title("🔐 Akses Akademi Pelajar")
-        t_l, t_r, t_f = st.tabs(["Login", "Daftar", "Lupa Password"])
-        with t_l:
-            le = st.text_input("Email", key="l_e_master")
-            lp = st.text_input("Password", type="password", key="l_p_master")
-            if st.button("Masuk", key="l_btn_master"):
-                try:
-                    res = supabase.auth.sign_in_with_password({"email": le, "password": lp})
-                    st.session_state.user = res.user
-                    st.rerun()
-                except Exception as e: st.error(f"Gagal: {str(e)}")
-        with t_r:
-            re = st.text_input("Email Baru", key="r_e_master")
-            rp = st.text_input("Password Baru", type="password", key="r_p_master")
-            if st.button("Daftar Akun", key="r_btn_master"):
-                try:
-                    supabase.auth.sign_up({"email": re, "password": rp})
-                    st.success("✅ Berhasil! Silakan login.")
-                except Exception as e: st.error(f"Gagal: {str(e)}")
-        with t_f:
-            fe = st.text_input("Email Terdaftar", key="f_e_master")
-            if st.button("Kirim Link Reset", key="f_btn_master"):
-                try:
-                    supabase.auth.reset_password_for_email(fe, {"redirect_to": "https://generator-sd.streamlit.app"})
-                    st.success("📩 Link Reset terkirim!")
-                except Exception as e: st.error(f"Gagal: {str(e)}")
-    # Footer untuk halaman login
-    st.write("---")
-    st.markdown("<div style='text-align: center; font-size: 12px;'><b><p>Aplikasi Generator Soal ini Milik Bimbingan Belajar Digital \"Akademi Pelajar\"</p><p>Dilarang menyebarluaskan tanpa persetujuan tertulis dari Akademi Pelajar</p><p>Semua hak cipta dilindungi undang-undang</p></b></div>", unsafe_allow_html=True)
-    st.stop()
-
-# --- 3. DATABASE MATERI LENGKAP (DIKUNCI BALIK - 1-6 SD) ---
+# DATABASE MATERI (LOCKED)
 DATABASE_MATERI = {
     "1 SD": {"Matematika": ["Bilangan sampai 10", "Penjumlahan & Pengurangan", "Bentuk Bangun Datar", "Mengukur Panjang Benda", "Mengenal Waktu"], "IPA": ["Anggota Tubuh", "Pancaindra", "Siang dan Malam", "Benda Hidup & Mati"], "Bahasa Indonesia": ["Mengenal Huruf", "Suku Kata", "Perkenalan Diri", "Benda di Sekitarku"], "Bahasa Inggris": ["Numbers 1-10", "Colors", "My Body", "Greetings"]},
     "2 SD": {"Matematika": ["Perkalian Dasar", "Pembagian Dasar", "Bangun Datar & Ruang", "Pengukuran Berat (kg, ons)", "Nilai Uang"], "IPA": ["Wujud Benda (Padat, Cair, Gas)", "Panas dan Cahaya", "Tempat Hidup Hewan"], "Bahasa Indonesia": ["Ungkapan Santun", "Tanda Baca", "Puisi Anak", "Menjaga Kesehatan"], "Bahasa Inggris": ["Parts of House", "Daily Activities", "Numbers 11-20", "Animals"]},
@@ -112,7 +121,7 @@ LABEL_BENTUK = {
     "Uraian": "Jawablah pertanyaan berikut dengan tepat"
 }
 
-# --- HELPER & WORD ENGINE ---
+# --- WORD ENGINE ---
 def get_clean_options(item):
     opsi_raw = item.get('opsi') or []
     labels = ['A', 'B', 'C', 'D']
@@ -150,25 +159,25 @@ def create_docx(data_soal, mapel, kelas):
             kunci = ", ".join([f"{['A','B','C','D'][i]}: {k['kunci']}" for i, k in enumerate(item.get('kategori_pernyataan', []))])
         doc.add_paragraph(f"KUNCI: {kunci}").bold = True
         doc.add_paragraph("PEMBAHASAN:")
-        for step in item.get('pembahasan_langkah', []): doc.add_paragraph(f"• {step}")
-        for analysis in item.get('analisis_opsi', []): doc.add_paragraph(f"• {analysis}")
+        for s in item.get('pembahasan_langkah', []): doc.add_paragraph(f"• {s}")
+        for a in item.get('analisis_opsi', []): doc.add_paragraph(f"• {a}")
         doc.add_paragraph(item.get('kesimpulan_akhir', '')).bold = True
     bio = BytesIO(); doc.save(bio); bio.seek(0); return bio
 
-# --- 4. SIDEBAR CONFIG (DIKUNCI) ---
+# --- SIDEBAR (LOCKED) ---
 with st.sidebar:
     suffix = st.session_state.reset_counter
     if os.path.exists("logo.png"):
         c1, c2, c3 = st.columns([1, 2, 1]); c2.image("logo.png", width=100)
     st.write(f"👤 **{st.session_state.user.email}**")
-    if st.button("🚪 Logout", key="logout_app"):
+    if st.button("🚪 Logout"):
         supabase.auth.sign_out(); st.session_state.user = None; st.rerun()
     st.divider()
     st.markdown("### ⚙️ Konfigurasi")
     api_key = st.secrets["OPENAI_API_KEY"]
     kelas_sel = st.selectbox("Pilih Kelas", list(DATABASE_MATERI.keys()), key=f"k_{suffix}")
     mapel_sel = st.selectbox("Mata Pelajaran", list(DATABASE_MATERI[kelas_sel].keys()), key=f"m_{suffix}")
-    jml_soal = st.slider("Jumlah Soal (Max 10)", 1, 10, 2, key=f"j_{suffix}")
+    jml_soal = st.slider("Jumlah Soal", 1, 10, 2, key=f"j_{suffix}")
     req_details = []
     for i in range(jml_soal):
         with st.expander(f"Soal {i+1}", expanded=(i==0)):
@@ -181,21 +190,18 @@ with st.sidebar:
     if c2.button("🔄 Reset"):
         st.session_state.hasil_soal = None; st.session_state.reset_counter += 1; st.rerun()
 
-# --- 5. PERSONA & GENERATOR (DIKUNCI MATI) ---
+# --- MAIN UI DISPLAY (LOCKED) ---
 if btn_gen:
     client = OpenAI(api_key=api_key)
-    status_box = st.status("✅ Soal Dalam Proses Pembuatan, Silahkan Ditunggu.", expanded=True)
+    status_box = st.status("✅ Soal Dalam Proses Pembuatan...", expanded=True)
     summary = "\n".join([f"- Soal {i+1}: {r['topik']}, {r['level']}, {r['bentuk']}" for i, r in enumerate(req_details)])
-    
-    # PERSONA MASTER AKUMULATIF (LOCKED)
     system_prompt = """Anda adalah Pakar Pengembang Kurikulum Merdeka Kemdikbud RI dan Penulis Bank Soal Profesional. 
     Wajib memberikan jawaban dalam format json murni.
-    KARAKTERISTIK HOTS: Mengukur C4-C6 (Analisis, Evaluasi, Menciptakan), Berpikir Kritis, Kontekstual Dunia Nyata. Bukan hafalan.
+    KARAKTERISTIK HOTS: Analisis (C4-C6), Berpikir Kritis, Kontekstual Dunia Nyata.
     ATURAN KUNCI:
-    1. PG Kompleks: Minimal 2 benar. Kunci wajib menyebutkan huruf (A, C, dst). Pembahasan per opsi.
-    2. PG Kompleks Kategori: 4 Pernyataan berlabel A-D. Jelaskan alasan Benar/Salah per label (analisis_opsi).
-    3. Kesimpulan: Wajib ada field 'kesimpulan_akhir' -> 'Jadi, jawaban yang benar adalah...'."""
-
+    1. PG Kompleks: Minimal 2 benar. Kunci wajib huruf (A, C, dst). Pembahasan per opsi (analisis_opsi).
+    2. PG Kompleks Kategori: 4 Pernyataan label A-D. Jelaskan alasan Benar/Salah per label (analisis_opsi).
+    3. Kesimpulan: Wajib diakhiri 'Jadi, jawaban yang benar adalah...'."""
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
@@ -203,18 +209,17 @@ if btn_gen:
             response_format={"type": "json_object"}
         )
         st.session_state.hasil_soal = json.loads(response.choices[0].message.content).get("soal_list", [])
-        status_box.update(label="✅ Berhasil!", state="complete", expanded=False)
+        status_box.update(label="✅ Selesai!", state="complete", expanded=False)
     except Exception as e: st.error(f"Gagal: {e}")
 
-# --- 6. TAMPILAN HASIL (LOCKED & ANTI-BLANK) ---
+# TAMPILKAN HASIL (ANTI-BLANK)
 if st.session_state.hasil_soal:
-    st.download_button("📥 Download Word", create_docx(st.session_state.hasil_soal, mapel_sel, kelas_sel), f"Bank_Soal_{mapel_sel}.docx")
+    st.download_button("📥 Download Word", create_docx(st.session_state.hasil_soal, mapel_sel, kelas_sel), f"Soal_AKM_{mapel_sel}.docx")
     for idx, item in enumerate(st.session_state.hasil_soal):
         with st.container(border=True):
             bentuk = item.get('bentuk'); ket = LABEL_BENTUK.get(bentuk)
             st.markdown(f"#### Soal {idx+1} *({ket})*")
             st.markdown(f"**{item.get('soal','')}**")
-            
             if bentuk == "PG Sederhana": st.radio("Jawaban:", get_clean_options(item), key=f"ans_{idx}_{suffix}", index=None)
             elif bentuk == "PG Kompleks":
                 for o_idx, opt in enumerate(get_clean_options(item)): st.checkbox(opt, key=f"chk_{idx}_{o_idx}_{suffix}")
@@ -230,8 +235,6 @@ if st.session_state.hasil_soal:
                     with c2: st.checkbox(" ", key=f"b_{idx}_{k_idx}_{suffix}", label_visibility="collapsed")
                     with c3: st.checkbox(" ", key=f"s_{idx}_{k_idx}_{suffix}", label_visibility="collapsed")
             elif bentuk == "Uraian": st.text_area("Jawaban:", key=f"txt_{idx}_{suffix}")
-            
-            # METADATA BOLD-ITALIC (DIKUNCI)
             st.markdown(f"<div class='metadata-text'>Materi : {item.get('materi','')} | Level : {item.get('level','')}</div>", unsafe_allow_html=True)
             with st.expander("Lihat Kunci & Pembahasan Mendalam"):
                 kunci = item.get('kunci_jawaban_teks', '')
@@ -242,6 +245,6 @@ if st.session_state.hasil_soal:
                 for a in item.get('analisis_opsi', []): st.write(f"• {a}")
                 st.info(f"**Kesimpulan:** {item.get('kesimpulan_akhir','')}")
 
-# --- 7. FOOTER (DIKUNCI TOTAL) ---
+# FOOTER (DIKUNCI)
 st.write("---")
 st.markdown("<div style='text-align: center; font-size: 12px;'><b><p>Aplikasi Generator Soal ini Milik Bimbingan Belajar Digital \"Akademi Pelajar\"</p><p>Dilarang menyebarluaskan tanpa persetujuan tertulis dari Akademi Pelajar</p><p>Semua hak cipta dilindungi undang-undang</p></b></div>", unsafe_allow_html=True)
