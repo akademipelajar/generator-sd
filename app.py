@@ -4,138 +4,82 @@ import os
 import time
 from io import BytesIO
 from docx import Document
-from docx.shared import Inches, Pt, RGBColor
+from docx.shared import Inches, Pt
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 from openai import OpenAI
-
-import streamlit as st
 from supabase import create_client
 
-# ===============================
-# PAGE CONFIG
-# ===============================
-st.set_page_config(
-    page_title="Generator Soal SD",
-    page_icon="📚",
-    layout="wide"
-)
+# ==========================================
+# --- 1. KONFIGURASI HALAMAN ---
+# ==========================================
+st.set_page_config(page_title="Generator Soal SD", page_icon="📚", layout="wide")
 
-# ===============================
-# SUPABASE CONFIG
-# ===============================
-SUPABASE_URL = st.secrets["SUPABASE_URL"]
-SUPABASE_KEY = st.secrets["SUPABASE_ANON_KEY"]
+# ==========================================
+# --- 2. SUPABASE INITIALIZATION ---
+# ==========================================
+# Pastikan st.secrets: SUPABASE_URL, SUPABASE_ANON_KEY, OPENAI_API_KEY
+try:
+    supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_ANON_KEY"])
+except Exception as e:
+    st.error("Konfigurasi Supabase bermasalah. Pastikan Secrets sudah diisi.")
+    st.stop()
 
-REDIRECT_TO = "https://generator-sd.streamlit.app"
-
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-# ===============================
-# SESSION STATE
-# ===============================
+# ==========================================
+# --- 3. AUTHENTICATION UI (LOGIN & REGISTER) ---
+# ==========================================
 if "user" not in st.session_state:
     st.session_state.user = None
 
-if "role" not in st.session_state:
-    st.session_state.role = None
+def auth_page():
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    c1, c2, c3 = st.columns([1, 2, 1])
+    with c2:
+        st.title("🔐 Akses Akademi Pelajar")
+        tab1, tab2 = st.tabs(["Login", "Daftar Akun"])
+        
+        with tab1:
+            email = st.text_input("Email", key="login_email")
+            password = st.text_input("Password", type="password", key="login_pass")
+            if st.button("Masuk"):
+                try:
+                    res = supabase.auth.sign_in_with_password({"email": email, "password": password})
+                    st.session_state.user = res.user
+                    st.success("✅ Berhasil masuk!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Gagal login: {str(e)}")
+        
+        with tab2:
+            new_email = st.text_input("Email Baru", key="reg_email")
+            new_password = st.text_input("Password Baru", type="password", key="reg_pass")
+            confirm_pass = st.text_input("Konfirmasi Password", type="password")
+            if st.button("Daftar Sekarang"):
+                if new_password != confirm_pass:
+                    st.error("❌ Password tidak cocok")
+                else:
+                    try:
+                        supabase.auth.sign_up({"email": new_email, "password": new_password})
+                        st.success("✅ Pendaftaran berhasil! Silakan login di tab sebelah.")
+                    except Exception as e:
+                        st.error(f"Gagal daftar: {str(e)}")
+    st.stop()
 
-
-# ===============================
-# 1. TANGKAP ?code= DARI URL (PAKAI API BARU)
-# ===============================
-params = st.query_params
-
-if "code" in params:
+# Jalankan Login Guard
+if st.session_state.user is None:
+    # Cek apakah session masih aktif di browser
     try:
-        supabase.auth.exchange_code_for_session(params["code"])
-        st.query_params.clear()
-        st.rerun()
-    except Exception as e:
-        st.error("Gagal memproses login")
-        st.stop()
+        current_user = supabase.auth.get_user()
+        if current_user and current_user.user:
+            st.session_state.user = current_user.user
+        else:
+            auth_page()
+    except:
+        auth_page()
 
-
-# ===============================
-# 2. AMBIL USER
-# ===============================
-user_res = supabase.auth.get_user()
-if user_res and user_res.user:
-    st.session_state.user = user_res.user
-
-
-# ===============================
-# 3. LOGIN PAGE (PAKAI LINK, BUKAN BUTTON)
-# ===============================
-def login_page():
-    st.title("🔐 Login Dulu")
-    st.caption("Silakan login menggunakan akun Google")
-
-    res = supabase.auth.sign_in_with_oauth({
-        "provider": "google",
-        "options": {
-            "redirect_to": REDIRECT_TO
-        }
-    })
-
-    st.markdown(
-        f"""
-        <a href="{res.url}" target="_self"
-           style="
-             display:inline-block;
-             padding:12px 20px;
-             background:#ffffff;
-             border:1px solid #ddd;
-             border-radius:8px;
-             text-decoration:none;
-             font-weight:600;
-           ">
-           🔐 Login dengan Google
-        </a>
-        """,
-        unsafe_allow_html=True
-    )
-
-
-# ===============================
-# 4. LOGIN GUARD
-# ===============================
-if not st.session_state.user:
-    login_page()
-    st.stop()
-
-
-# ===============================
-# 5. ROLE CHECK
-# ===============================
-user_id = st.session_state.user.id
-
-role_res = supabase.table("profiles") \
-    .select("role") \
-    .eq("id", user_id) \
-    .single() \
-    .execute()
-
-st.session_state.role = role_res.data["role"]
-
-if st.session_state.role != "admin":
-    st.warning("⛔ Fitur ini khusus admin")
-    st.stop()
-
-
-# ===============================
-# 6. HALAMAN UTAMA
-# ===============================
-st.success("✅ Login berhasil")
-st.write("👤 Email:", st.session_state.user.email)
-st.write("🛡️ Role:", st.session_state.role)
-
-st.divider()
-
-# --- 1. KONFIGURASI HALAMAN ---
-st.set_page_config(page_title="Generator Soal SD", page_icon="📚", layout="wide")
-
-# --- 2. STYLE CSS (DIKUNCI TOTAL: Font, Header, Sidebar Gradient, Metadata) ---
+# ==========================================
+# --- 4. STYLE CSS (DIKUNCI TOTAL) ---
+# ==========================================
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@700&family=Poppins:ital,wght@1,700&display=swap');
@@ -151,7 +95,9 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 3. DATABASE MATERI LENGKAP (DIKUNCI TOTAL) ---
+# ==========================================
+# --- 5. DATABASE MATERI (DIKUNCI TOTAL) ---
+# ==========================================
 DATABASE_MATERI = {
     "1 SD": {
         "Matematika": ["Bilangan sampai 10", "Penjumlahan & Pengurangan", "Bentuk Bangun Datar", "Mengukur Panjang Benda", "Mengenal Waktu"],
@@ -198,7 +144,7 @@ LABEL_BENTUK = {
     "Uraian": "Jawablah pertanyaan berikut dengan tepat"
 }
 
-# --- 4. HELPER FUNCTIONS ---
+# --- HELPER & WORD ENGINE ---
 def get_clean_options(item):
     opsi_raw = item.get('opsi') or []
     labels = ['A', 'B', 'C', 'D']
@@ -216,67 +162,46 @@ def set_table_header_bg(cell):
     shading_elm.set(qn('w:fill'), 'D1E3F3')
     cell._tc.get_or_add_tcPr().append(shading_elm)
 
-# --- 5. FUNGSI WORD (DIKUNCI TOTAL DENGAN PERBAIKAN KUNCI KATEGORI) ---
 def create_docx(data_soal, mapel, kelas):
     doc = Document()
     doc.add_heading(f'LATIHAN SOAL {mapel.upper()}', 0)
     doc.add_paragraph(f'Kelas: {kelas}')
     doc.add_heading('A. DAFTAR SOAL', level=1)
-    
     for idx, item in enumerate(data_soal):
         bentuk = item.get('bentuk', '')
         p = doc.add_paragraph()
         p.add_run(f"Soal {idx+1} ({LABEL_BENTUK.get(bentuk, '')})").italic = True
         doc.add_paragraph(item.get('soal',''), style='Normal').bold = True
-        
         if bentuk == "PG Sederhana":
             for op in get_clean_options(item): doc.add_paragraph(op)
         elif bentuk == "PG Kompleks":
             for op in get_clean_options(item): doc.add_paragraph(f"☐ {op}")
         elif bentuk == "PG Kompleks Kategori":
-            table = doc.add_table(rows=1, cols=3)
-            table.style = 'Table Grid'
+            table = doc.add_table(rows=1, cols=3); table.style = 'Table Grid'
             hdr = table.rows[0].cells
             hdr[0].text, hdr[1].text, hdr[2].text = 'Pernyataan', 'Benar', 'Salah'
             for cell in hdr: set_table_header_bg(cell)
-            labels = ['A', 'B', 'C', 'D']
             for i, kat in enumerate(item.get('kategori_pernyataan', [])):
                 row = table.add_row().cells
-                row[0].text = f"{labels[i]}. {kat.get('pernyataan','')}"
+                row[0].text = f"{['A','B','C','D'][i]}. {kat['pernyataan']}"
         elif bentuk == "Uraian":
             doc.add_paragraph("Jawaban: ...................................................................")
-            
         doc.add_paragraph(f"Materi : {item.get('materi','')} | Level : {item.get('level','')}")
-        doc.add_paragraph("")
-
     doc.add_page_break()
     doc.add_heading('B. KUNCI JAWABAN & PEMBAHASAN', level=1)
     for idx, item in enumerate(data_soal):
         doc.add_paragraph(f"Nomor {idx+1}:").bold = True
-        
-        # Kunci
-        kunci = item.get('kunci_jawaban_teks', '')
-        if not kunci and item.get('bentuk') == "PG Kompleks Kategori":
-            # Autogenerate summary jika AI lupa
-            kunci = ", ".join([f"{['A','B','C','D'][i]}: {k['kunci']}" for i, k in enumerate(item.get('kategori_pernyataan', []))])
-        
-        doc.add_paragraph(f"KUNCI: {kunci}").bold = True
-        
+        doc.add_paragraph(f"KUNCI: {item.get('kunci_jawaban_teks', '')}")
         doc.add_paragraph("PEMBAHASAN:")
-        # Tampilkan Analisis Per Opsi jika ada (untuk Kompleks/Kategori)
-        analisis = item.get('analisis_opsi', [])
-        for a in analisis: doc.add_paragraph(f"• {a}")
-        
-        # Tampilkan Langkah jika ada (untuk Sederhana)
-        langkah = item.get('pembahasan_langkah', [])
-        for step in langkah: doc.add_paragraph(f"✅ {step}")
-            
+        for step in item.get('pembahasan_langkah', []): doc.add_paragraph(f"• {step}")
+        for analysis in item.get('analisis_opsi', []): doc.add_paragraph(f"• {analysis}")
         doc.add_paragraph(item.get('kesimpulan_akhir', '')).bold = True
         doc.add_paragraph("-" * 20)
-        
     bio = BytesIO(); doc.save(bio); bio.seek(0); return bio
 
-# --- 6. SESSION STATE & SIDEBAR (DIKUNCI TOTAL) ---
+# ==========================================
+# --- 6. SESSION STATE & SIDEBAR (DIKUNCI) ---
+# ==========================================
 if 'hasil_soal' not in st.session_state: st.session_state.hasil_soal = None
 if 'reset_counter' not in st.session_state: st.session_state.reset_counter = 0
 
@@ -284,13 +209,20 @@ with st.sidebar:
     suffix = st.session_state.reset_counter
     if os.path.exists("logo.png"):
         c1, c2, c3 = st.columns([1, 2, 1]); c2.image("logo.png", width=100)
+    
+    st.write(f"👤 **{st.session_state.user.email}**")
+    if st.button("🚪 Logout"):
+        supabase.auth.sign_out()
+        st.session_state.user = None
+        st.rerun()
+    
+    st.divider()
     st.markdown("### ⚙️ Konfigurasi")
-    api_key = st.secrets.get("OPENAI_API_KEY") or st.text_input("OpenAI API Key", type="password", key=f"api_{suffix}")
-    if not api_key: st.info("💡 Masukkan API Key di sidebar untuk memulai."); st.stop()
+    api_key = st.secrets["OPENAI_API_KEY"]
     
     kelas_sel = st.selectbox("Pilih Kelas", list(DATABASE_MATERI.keys()), key=f"k_{suffix}")
     mapel_sel = st.selectbox("Mata Pelajaran", list(DATABASE_MATERI[kelas_sel].keys()), key=f"m_{suffix}")
-    jml_soal = st.slider("Jumlah Soal", 1, 10, 2, key=f"j_{suffix}")
+    jml_soal = st.slider("Jumlah Soal (Max 10)", 1, 10, 2, key=f"j_{suffix}")
     
     req_details = []
     for i in range(jml_soal):
@@ -310,36 +242,20 @@ st.markdown('<div class="header-title">Generator Soal SD</div>', unsafe_allow_ht
 st.markdown('<div class="header-sub">Berdasarkan Kurikulum Merdeka</div>', unsafe_allow_html=True)
 st.write("---")
 
-# --- 8. PERSONA MASTER & LOGIKA JANTUNG (AKUMULATIF & FIX KATEGORI) ---
+# ==========================================
+# --- 8. PERSONA & LOGIKA JANTUNG (DIKUNCI) ---
+# ==========================================
 if btn_gen:
     client = OpenAI(api_key=api_key)
-    status_box = st.status("✅ Soal Dalam Proses Pembuatan, Silahkan Ditunggu.", expanded=True)
+    status_box = st.status("✅ Soal Dalam Proses Pembuatan...", expanded=True)
     summary = "\n".join([f"- Soal {i+1}: {r['topik']}, {r['level']}, {r['bentuk']}" for i, r in enumerate(req_details)])
     
     system_prompt = """Anda adalah Pakar Pengembang Kurikulum Merdeka Kemdikbud RI dan Penulis Bank Soal Profesional. 
     Wajib memberikan jawaban dalam format json murni.
-
-    ATURAN KETAT KUNCI & PEMBAHASAN:
-    1. PG Sederhana: Pembahasan langkah demi langkah (pembahasan_langkah).
-    2. PG Kompleks: Minimal 2 benar. Kunci (kunci_jawaban_teks) wajib huruf (A, C, dst). Pembahasan per opsi (analisis_opsi).
-    3. PG Kompleks Kategori: 4 Pernyataan label A, B, C, D. Kunci (kunci_jawaban_teks) rangkuman (A: Benar, B: Salah, dst). 
-       Pembahasan WAJIB menjelaskan alasan per label pernyataan A-D (analisis_opsi).
-    4. Kesimpulan Akhir: Wajib field 'kesimpulan_akhir' -> 'Jadi, jawaban yang benar adalah...'
-
-    JSON STRUCTURE:
-    {
-      "soal_list": [
-        {
-          "no": 1, "soal": "...", "bentuk": "...", "materi": "...", "level": "...",
-          "kunci_jawaban_teks": "A dan C / A: Benar, B: Salah...",
-          "analisis_opsi": ["A: [Alasan]...", "B: [Alasan]..."],
-          "pembahasan_langkah": ["Hanya jika Sederhana: Langkah 1..."],
-          "kesimpulan_akhir": "Jadi, jawaban yang benar adalah...",
-          "opsi": ["A...", "B...", "C...", "D..."],
-          "kategori_pernyataan": [{"pernyataan": "...", "kunci": "Benar/Salah"}]
-        }
-      ]
-    }"""
+    ATURAN KETAT:
+    1. PG Kompleks: Minimal 2 benar. Kunci wajib huruf (A, C, dst). Pembahasan per opsi.
+    2. PG Kompleks Kategori: 4 Pernyataan label A-D. Jelaskan alasan Benar/Salah per label.
+    3. Kesimpulan: Wajib diakhiri 'Jadi, jawaban yang benar adalah...'."""
 
     try:
         response = client.chat.completions.create(
@@ -349,13 +265,12 @@ if btn_gen:
         )
         data = json.loads(response.choices[0].message.content).get("soal_list", [])
         st.session_state.hasil_soal = data
-        status_box.update(label="✅ Soal Berhasil Dibuat!", state="complete", expanded=False)
+        status_box.update(label="✅ Selesai!", state="complete", expanded=False)
     except Exception as e: st.error(f"Gagal: {e}")
 
-# --- 9. TAMPILAN HASIL (DIKUNCI) ---
+# --- 9. TAMPILAN HASIL ---
 if st.session_state.hasil_soal:
-    st.download_button("📥 Download Word", create_docx(st.session_state.hasil_soal, mapel_sel, kelas_sel), f"Soal_Master_{mapel_sel}.docx")
-    
+    st.download_button("📥 Download Word", create_docx(st.session_state.hasil_soal, mapel_sel, kelas_sel), f"Soal_AKM_{mapel_sel}.docx")
     for idx, item in enumerate(st.session_state.hasil_soal):
         with st.container(border=True):
             bentuk = item.get('bentuk')
@@ -365,45 +280,30 @@ if st.session_state.hasil_soal:
             if bentuk == "PG Sederhana":
                 st.radio("Pilih jawaban:", get_clean_options(item), key=f"ans_{idx}_{suffix}", index=None)
             elif bentuk == "PG Kompleks":
-                for o_idx, opt in enumerate(get_clean_options(item)):
-                    st.checkbox(opt, key=f"chk_{idx}_{o_idx}_{suffix}")
+                for o_idx, opt in enumerate(get_clean_options(item)): st.checkbox(opt, key=f"chk_{idx}_{o_idx}_{suffix}")
             elif bentuk == "PG Kompleks Kategori":
                 h1, h2, h3 = st.columns([4, 1, 1])
                 h1.markdown("<div class='table-header'>Pernyataan</div>", unsafe_allow_html=True)
                 h2.markdown("<div class='table-header'>Benar</div>", unsafe_allow_html=True)
                 h3.markdown("<div class='table-header'>Salah</div>", unsafe_allow_html=True)
-                
                 labels = ['A', 'B', 'C', 'D']
                 for k_idx, kat in enumerate(item.get('kategori_pernyataan', [])):
                     c1, c2, c3 = st.columns([4, 1, 1])
-                    c1.markdown(f"<div class='table-cell'>{labels[k_idx]}. {kat.get('pernyataan','')}</div>", unsafe_allow_html=True)
+                    c1.markdown(f"<div class='table-cell'>{labels[k_idx]}. {kat['pernyataan']}</div>", unsafe_allow_html=True)
                     with c2: st.checkbox(" ", key=f"b_{idx}_{k_idx}_{suffix}", label_visibility="collapsed")
                     with c3: st.checkbox(" ", key=f"s_{idx}_{k_idx}_{suffix}", label_visibility="collapsed")
             elif bentuk == "Uraian": st.text_area("Tuliskan jawaban:", key=f"txt_{idx}_{suffix}")
 
             st.markdown(f"<div class='metadata-text'>Materi : {item.get('materi','')} | Level : {item.get('level','')}</div>", unsafe_allow_html=True)
-            
-            with st.expander("Lihat Kunci & Pembahasan Mendalam"):
-                # Menampilkan Kunci
+            with st.expander("Lihat Kunci & Pembahasan"):
                 kunci = item.get('kunci_jawaban_teks', '')
                 if not kunci and bentuk == "PG Kompleks Kategori":
                     kunci = ", ".join([f"{labels[i]}: {k['kunci']}" for i, k in enumerate(item.get('kategori_pernyataan', []))])
-                st.success(f"**Kunci Jawaban:** {kunci}")
-                
-                st.markdown("**Analisis/Langkah Pembahasan:**")
-                # Gabungkan analisis dan langkah untuk memastikan tidak ada yang kosong
-                all_notes = item.get('analisis_opsi', []) + item.get('pembahasan_langkah', [])
-                for note in all_notes:
-                    st.write(f"• {note}")
-                
+                st.success(f"**Kunci:** {kunci}")
+                for s in item.get('pembahasan_langkah', []): st.write(f"✅ {s}")
+                for a in item.get('analisis_opsi', []): st.write(f"• {a}")
                 st.info(f"**Kesimpulan:** {item.get('kesimpulan_akhir','')}")
 
 # --- 10. FOOTER (DIKUNCI TOTAL) ---
 st.write("---")
 st.markdown("<div style='text-align: center; font-size: 12px;'><b><p>Aplikasi Generator Soal ini Milik Bimbingan Belajar Digital \"Akademi Pelajar\"</p><p>Dilarang menyebarluaskan tanpa persetujuan tertulis dari Akademi Pelajar</p><p>Semua hak cipta dilindungi undang-undang</p></b></div>", unsafe_allow_html=True)
-
-
-
-
-
-
