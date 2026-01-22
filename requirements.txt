@@ -1,6 +1,8 @@
+supabase
 streamlit
 requests
 python-docx
 openai
 matplotlib
+
 
