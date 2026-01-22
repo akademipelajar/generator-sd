@@ -9,23 +9,28 @@ from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 from openai import OpenAI
 
-# --- AUTH HELPER ---
+# --- AUTH SETUP ---
 from supabase import create_client
-import streamlit as st
 
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_ANON_KEY"]
+REDIRECT_URL = st.secrets["REDIRECT_URL"]
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+# init session
 if "user" not in st.session_state:
     st.session_state.user = None
 
-# --- TOMBOL LOGIN GOOGLE ---
+# ambil session kalau sudah login
+session = supabase.auth.get_session()
+if session and session.user:
+    st.session_state.user = session.user
 
-REDIRECT_URL = st.secrets["REDIRECT_URL"]
 
-def login_google():
+def login_page():
+    st.title("🔐 Login Dulu")
+
     res = supabase.auth.sign_in_with_oauth({
         "provider": "google",
         "options": {
@@ -35,21 +40,14 @@ def login_google():
 
     st.markdown(f"[🔐 Login dengan Google]({res.url})", unsafe_allow_html=True)
 
-# --- GUARD (Wajib Login) ---
-query = st.experimental_get_query_params()
 
-if "access_token" in query:
-    session = supabase.auth.get_session_from_url(
-        st.experimental_get_url()
-    )
-    st.session_state.user = session.user
-    st.experimental_set_query_params()  # bersihin URL
-
+# --- GUARD LOGIN ---
 if not st.session_state.user:
-    st.title("🔐 Login Dulu")
-    login_google()
+    login_page()
     st.stop()
 
+
+# --- ROLE CHECK ---
 user_id = st.session_state.user.id
 
 role_res = supabase.table("profiles") \
@@ -334,5 +332,6 @@ if st.session_state.hasil_soal:
 # --- 10. FOOTER (DIKUNCI TOTAL) ---
 st.write("---")
 st.markdown("<div style='text-align: center; font-size: 12px;'><b><p>Aplikasi Generator Soal ini Milik Bimbingan Belajar Digital \"Akademi Pelajar\"</p><p>Dilarang menyebarluaskan tanpa persetujuan tertulis dari Akademi Pelajar</p><p>Semua hak cipta dilindungi undang-undang</p></b></div>", unsafe_allow_html=True)
+
 
 
