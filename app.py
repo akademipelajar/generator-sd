@@ -27,7 +27,6 @@ st.set_page_config(
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_ANON_KEY"]
 
-# ⛔ BUKAN callback supabase
 REDIRECT_TO = "https://generator-sd.streamlit.app"
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -43,15 +42,15 @@ if "role" not in st.session_state:
 
 
 # ===============================
-# 1. TANGKAP CODE DARI URL
+# 1. TANGKAP ?code= DARI URL (PAKAI API BARU)
 # ===============================
-params = st.experimental_get_query_params()
+params = st.query_params
 
 if "code" in params:
     try:
-        supabase.auth.exchange_code_for_session(params["code"][0])
-        st.experimental_set_query_params()  # bersihin URL
-        st.experimental_rerun()
+        supabase.auth.exchange_code_for_session(params["code"])
+        st.query_params.clear()
+        st.rerun()
     except Exception as e:
         st.error("Gagal memproses login")
         st.stop()
@@ -66,27 +65,36 @@ if user_res and user_res.user:
 
 
 # ===============================
-# 3. LOGIN PAGE
+# 3. LOGIN PAGE (PAKAI LINK, BUKAN BUTTON)
 # ===============================
 def login_page():
     st.title("🔐 Login Dulu")
     st.caption("Silakan login menggunakan akun Google")
 
-    if st.button("🔐 Login dengan Google"):
-        res = supabase.auth.sign_in_with_oauth({
-            "provider": "google",
-            "options": {
-                "redirect_to": REDIRECT_TO
-            }
-        })
-        st.markdown(
-            f"""
-            <script>
-                window.location.href = "{res.url}";
-            </script>
-            """,
-            unsafe_allow_html=True
-        )
+    res = supabase.auth.sign_in_with_oauth({
+        "provider": "google",
+        "options": {
+            "redirect_to": REDIRECT_TO
+        }
+    })
+
+    st.markdown(
+        f"""
+        <a href="{res.url}" target="_self"
+           style="
+             display:inline-block;
+             padding:12px 20px;
+             background:#ffffff;
+             border:1px solid #ddd;
+             border-radius:8px;
+             text-decoration:none;
+             font-weight:600;
+           ">
+           🔐 Login dengan Google
+        </a>
+        """,
+        unsafe_allow_html=True
+    )
 
 
 # ===============================
@@ -393,6 +401,7 @@ if st.session_state.hasil_soal:
 # --- 10. FOOTER (DIKUNCI TOTAL) ---
 st.write("---")
 st.markdown("<div style='text-align: center; font-size: 12px;'><b><p>Aplikasi Generator Soal ini Milik Bimbingan Belajar Digital \"Akademi Pelajar\"</p><p>Dilarang menyebarluaskan tanpa persetujuan tertulis dari Akademi Pelajar</p><p>Semua hak cipta dilindungi undang-undang</p></b></div>", unsafe_allow_html=True)
+
 
 
 
