@@ -13,7 +13,7 @@ import streamlit as st
 from supabase import create_client
 
 # ===============================
-# CONFIG & INIT
+# PAGE CONFIG
 # ===============================
 st.set_page_config(
     page_title="Generator Soal SD",
@@ -21,13 +21,20 @@ st.set_page_config(
     layout="wide"
 )
 
+# ===============================
+# SUPABASE CONFIG
+# ===============================
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_ANON_KEY"]
-REDIRECT_URL = st.secrets["REDIRECT_URL"]
+
+# ⛔ BUKAN callback supabase
+REDIRECT_TO = "https://generator-sd.streamlit.app"
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# init session state
+# ===============================
+# SESSION STATE
+# ===============================
 if "user" not in st.session_state:
     st.session_state.user = None
 
@@ -36,28 +43,26 @@ if "role" not in st.session_state:
 
 
 # ===============================
-# 1. TANGKAP TOKEN DARI URL (WAJIB)
+# 1. TANGKAP CODE DARI URL
 # ===============================
-query_params = st.experimental_get_query_params()
+params = st.experimental_get_query_params()
 
-if "access_token" in query_params:
-    supabase.auth.set_session(
-        access_token=query_params["access_token"][0],
-        refresh_token=query_params.get("refresh_token", [None])[0]
-    )
-    st.experimental_set_query_params()  # bersihin URL
-    st.experimental_rerun()
+if "code" in params:
+    try:
+        supabase.auth.exchange_code_for_session(params["code"][0])
+        st.experimental_set_query_params()  # bersihin URL
+        st.experimental_rerun()
+    except Exception as e:
+        st.error("Gagal memproses login")
+        st.stop()
 
 
 # ===============================
-# 2. AMBIL USER DARI SUPABASE
+# 2. AMBIL USER
 # ===============================
-try:
-    user_res = supabase.auth.get_user()
-    if user_res and user_res.user:
-        st.session_state.user = user_res.user
-except Exception:
-    pass
+user_res = supabase.auth.get_user()
+if user_res and user_res.user:
+    st.session_state.user = user_res.user
 
 
 # ===============================
@@ -71,10 +76,17 @@ def login_page():
         res = supabase.auth.sign_in_with_oauth({
             "provider": "google",
             "options": {
-                "redirect_to": REDIRECT_URL
+                "redirect_to": REDIRECT_TO
             }
         })
-        st.markdown(f"[👉 Klik untuk lanjut login]({res.url})", unsafe_allow_html=True)
+        st.markdown(
+            f"""
+            <script>
+                window.location.href = "{res.url}";
+            </script>
+            """,
+            unsafe_allow_html=True
+        )
 
 
 # ===============================
@@ -86,7 +98,7 @@ if not st.session_state.user:
 
 
 # ===============================
-# 5. ROLE CHECK (ADMIN ONLY)
+# 5. ROLE CHECK
 # ===============================
 user_id = st.session_state.user.id
 
@@ -104,7 +116,7 @@ if st.session_state.role != "admin":
 
 
 # ===============================
-# 6. HALAMAN UTAMA (LOGIN SUKSES)
+# 6. HALAMAN UTAMA
 # ===============================
 st.success("✅ Login berhasil")
 st.write("👤 Email:", st.session_state.user.email)
@@ -381,6 +393,7 @@ if st.session_state.hasil_soal:
 # --- 10. FOOTER (DIKUNCI TOTAL) ---
 st.write("---")
 st.markdown("<div style='text-align: center; font-size: 12px;'><b><p>Aplikasi Generator Soal ini Milik Bimbingan Belajar Digital \"Akademi Pelajar\"</p><p>Dilarang menyebarluaskan tanpa persetujuan tertulis dari Akademi Pelajar</p><p>Semua hak cipta dilindungi undang-undang</p></b></div>", unsafe_allow_html=True)
+
 
 
 
