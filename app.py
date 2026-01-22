@@ -9,8 +9,17 @@ from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 from openai import OpenAI
 
-# --- AUTH SETUP ---
+import streamlit as st
 from supabase import create_client
+
+# ===============================
+# CONFIG & INIT
+# ===============================
+st.set_page_config(
+    page_title="Generator Soal SD",
+    page_icon="📚",
+    layout="wide"
+)
 
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_ANON_KEY"]
@@ -18,36 +27,67 @@ REDIRECT_URL = st.secrets["REDIRECT_URL"]
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# init session
+# init session state
 if "user" not in st.session_state:
     st.session_state.user = None
 
-# ambil session kalau sudah login
-session = supabase.auth.get_session()
-if session and session.user:
-    st.session_state.user = session.user
+if "role" not in st.session_state:
+    st.session_state.role = None
 
 
+# ===============================
+# 1. TANGKAP TOKEN DARI URL (WAJIB)
+# ===============================
+query_params = st.experimental_get_query_params()
+
+if "access_token" in query_params:
+    supabase.auth.set_session(
+        access_token=query_params["access_token"][0],
+        refresh_token=query_params.get("refresh_token", [None])[0]
+    )
+    st.experimental_set_query_params()  # bersihin URL
+    st.experimental_rerun()
+
+
+# ===============================
+# 2. AMBIL USER DARI SUPABASE
+# ===============================
+try:
+    user_res = supabase.auth.get_user()
+    if user_res and user_res.user:
+        st.session_state.user = user_res.user
+except Exception:
+    pass
+
+
+# ===============================
+# 3. LOGIN PAGE
+# ===============================
 def login_page():
     st.title("🔐 Login Dulu")
+    st.caption("Silakan login menggunakan akun Google")
 
-    res = supabase.auth.sign_in_with_oauth({
-        "provider": "google",
-        "options": {
-            "redirect_to": REDIRECT_URL
-        }
-    })
+    if st.button("🔐 Login dengan Google"):
+        res = supabase.auth.sign_in_with_oauth({
+            "provider": "google",
+            "options": {
+                "redirect_to": REDIRECT_URL
+            }
+        })
+        st.markdown(f"[👉 Klik untuk lanjut login]({res.url})", unsafe_allow_html=True)
 
-    st.markdown(f"[🔐 Login dengan Google]({res.url})", unsafe_allow_html=True)
 
-
-# --- GUARD LOGIN ---
+# ===============================
+# 4. LOGIN GUARD
+# ===============================
 if not st.session_state.user:
     login_page()
     st.stop()
 
 
-# --- ROLE CHECK ---
+# ===============================
+# 5. ROLE CHECK (ADMIN ONLY)
+# ===============================
 user_id = st.session_state.user.id
 
 role_res = supabase.table("profiles") \
@@ -59,9 +99,18 @@ role_res = supabase.table("profiles") \
 st.session_state.role = role_res.data["role"]
 
 if st.session_state.role != "admin":
-    st.warning("Fitur ini khusus admin")
+    st.warning("⛔ Fitur ini khusus admin")
     st.stop()
 
+
+# ===============================
+# 6. HALAMAN UTAMA (LOGIN SUKSES)
+# ===============================
+st.success("✅ Login berhasil")
+st.write("👤 Email:", st.session_state.user.email)
+st.write("🛡️ Role:", st.session_state.role)
+
+st.divider()
 
 # --- 1. KONFIGURASI HALAMAN ---
 st.set_page_config(page_title="Generator Soal SD", page_icon="📚", layout="wide")
@@ -332,6 +381,7 @@ if st.session_state.hasil_soal:
 # --- 10. FOOTER (DIKUNCI TOTAL) ---
 st.write("---")
 st.markdown("<div style='text-align: center; font-size: 12px;'><b><p>Aplikasi Generator Soal ini Milik Bimbingan Belajar Digital \"Akademi Pelajar\"</p><p>Dilarang menyebarluaskan tanpa persetujuan tertulis dari Akademi Pelajar</p><p>Semua hak cipta dilindungi undang-undang</p></b></div>", unsafe_allow_html=True)
+
 
 
 
