@@ -34,7 +34,7 @@ if 'reset_counter' not in st.session_state:
 # --- 2. AUTHENTICATION GATE (HARD-GATING) ---
 # ==========================================
 
-# Cek apakah user sudah login di latar belakang
+# Cek session di awal
 if st.session_state.user is None:
     try:
         user_res = supabase.auth.get_user()
@@ -42,65 +42,59 @@ if st.session_state.user is None:
             st.session_state.user = user_res.user
     except: pass
 
-# --- WILAYAH LOGIN (DIPISAH TOTAL) ---
+# Gerbang Auth (Dipisah agar tidak duplicate key)
 if st.session_state.user is None:
-    # Handle Recovery Mode
-    params = st.query_params
-    if "type" in params and params["type"] == "recovery":
+    q_params = st.query_params
+    if "type" in q_params and q_params["type"] == "recovery":
         st.markdown("<br><br>", unsafe_allow_html=True)
         c1, c2, c3 = st.columns([1, 2, 1])
         with c2:
             st.title("🔄 Setel Password Baru")
-            new_pwd = st.text_input("Password Baru", type="password", key="rec_pwd_inp")
-            if st.button("Simpan", key="rec_btn_save"):
+            new_p = st.text_input("Password Baru", type="password", key="recovery_pwd_input")
+            if st.button("Simpan Password", key="btn_save_recovery"):
                 try:
-                    supabase.auth.update_user({"password": new_pwd})
+                    supabase.auth.update_user({"password": new_p})
                     st.success("✅ Berhasil! Silakan login kembali.")
-                    time.sleep(1); st.query_params.clear(); st.rerun()
+                    time.sleep(2); st.query_params.clear(); st.rerun()
                 except Exception as e: st.error(f"Gagal: {str(e)}")
         st.stop()
 
-    # Halaman Login/Register Utama
     st.markdown("<br><br>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.title("🔐 Akses Akademi Pelajar")
-        # Gunakan key unik untuk tab agar tidak duplicate
-        t1, t2, t3 = st.tabs(["Login", "Daftar Akun", "Lupa Password"])
-        
+        t1, t2, t3 = st.tabs(["Login", "Daftar", "Lupa Password"])
         with t1:
-            l_email = st.text_input("Email", key="login_email_unique")
-            l_pass = st.text_input("Password", type="password", key="login_pass_unique")
-            if st.button("Masuk", key="login_btn_unique"):
+            le = st.text_input("Email", key="l_email_p")
+            lp = st.text_input("Password", type="password", key="l_pass_p")
+            if st.button("Masuk", key="l_btn_p"):
                 try:
-                    res = supabase.auth.sign_in_with_password({"email": l_email, "password": l_pass})
+                    res = supabase.auth.sign_in_with_password({"email": le, "password": lp})
                     st.session_state.user = res.user
                     st.rerun()
-                except Exception as ex: st.error(f"Gagal login: {str(ex)}")
-        
+                except Exception as e: st.error(f"Gagal login: {str(e)}")
         with t2:
-            r_email = st.text_input("Email Baru", key="reg_email_unique")
-            r_pass = st.text_input("Password Baru", type="password", key="reg_pass_unique")
-            if st.button("Daftar Sekarang", key="reg_btn_unique"):
+            re = st.text_input("Email Baru", key="r_email_p")
+            rp = st.text_input("Password Baru", type="password", key="r_pass_p")
+            if st.button("Daftar Akun", key="r_btn_p"):
                 try:
-                    supabase.auth.sign_up({"email": r_email, "password": r_pass})
-                    st.success("✅ Terdaftar! Silakan cek email atau login.")
-                except Exception as ex: st.error(f"Gagal daftar: {str(ex)}")
-        
+                    supabase.auth.sign_up({"email": re, "password": rp})
+                    st.success("✅ Terdaftar! Silakan login.")
+                except Exception as e: st.error(f"Gagal daftar: {str(e)}")
         with t3:
-            f_email = st.text_input("Email Terdaftar", key="fgt_email_unique")
-            if st.button("Kirim Link Reset", key="fgt_btn_unique"):
+            fe = st.text_input("Email Terdaftar", key="f_email_p")
+            if st.button("Kirim Link Reset", key="f_btn_p"):
                 try:
-                    supabase.auth.reset_password_for_email(f_email, {"redirect_to": "https://generator-sd.streamlit.app"})
+                    supabase.auth.reset_password_for_email(fe, {"redirect_to": "https://generator-sd.streamlit.app"})
                     st.success("📩 Link telah dikirim!")
-                except Exception as ex: st.error(f"Gagal: {str(ex)}")
-    st.stop() # HENTIKAN EKSEKUSI DI SINI JIKA BELUM LOGIN
+                except Exception as e: st.error(f"Gagal: {str(e)}")
+    st.stop()
 
 # ==========================================
-# --- 3. APLIKASI UTAMA (HANYA JALAN JIKA LOGIN) ---
+# --- 3. APLIKASI UTAMA (LOCKED DESIGN) ---
 # ==========================================
 
-# --- STYLE CSS (DIKUNCI TOTAL) ---
+# CSS (DIKUNCI)
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@700&family=Poppins:ital,wght@1,700&display=swap');
@@ -116,44 +110,14 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 4. DATABASE MATERI LENGKAP (MASTER - DIKUNCI) ---
+# DATABASE (DIKUNCI LENGKAP)
 DATABASE_MATERI = {
-    "1 SD": {
-        "Matematika": ["Bilangan sampai 10", "Penjumlahan & Pengurangan", "Bentuk Bangun Datar", "Mengukur Panjang Benda", "Mengenal Waktu"],
-        "IPA": ["Anggota Tubuh", "Pancaindra", "Siang dan Malam", "Benda Hidup & Mati"],
-        "Bahasa Indonesia": ["Mengenal Huruf", "Suku Kata", "Perkenalan Diri", "Benda di Sekitarku"],
-        "Bahasa Inggris": ["Numbers 1-10", "Colors", "My Body", "Greetings"]
-    },
-    "2 SD": {
-        "Matematika": ["Perkalian Dasar", "Pembagian Dasar", "Bangun Datar & Ruang", "Pengukuran Berat (kg, ons)", "Nilai Uang"],
-        "IPA": ["Wujud Benda (Padat, Cair, Gas)", "Panas dan Cahaya", "Tempat Hidup Hewan"],
-        "Bahasa Indonesia": ["Ungkapan Santun", "Tanda Baca", "Puisi Anak", "Menjaga Kesehatan"],
-        "Bahasa Inggris": ["Parts of House", "Daily Activities", "Numbers 11-20", "Animals"]
-    },
-    "3 SD": {
-        "Matematika": ["Pecahan Sederhana", "Simetri & Sudut", "Luas & Keliling Persegi", "Garis Bilangan", "Diagram Gambar"],
-        "IPA": ["Ciri-ciri Makhluk Hidup", "Perubahan Wujud Benda", "Cuaca dan Musim", "Energi Alternatif"],
-        "Bahasa Indonesia": ["Dongeng Hewan (Fabel)", "Lambang Pramuka", "Denah dan Arah", "Kalimat Saran"],
-        "Bahasa Inggris": ["Telling Time", "Days of Week", "Hobby", "Professions"]
-    },
-    "4 SD": {
-        "Matematika": ["Pecahan Senilai", "KPK dan FPB", "Segi Banyak", "Pembulatan Bilangan", "Diagram Batang"],
-        "IPA": ["Gaya dan Gerak", "Sumber Energi", "Bunyi dan Pendengaran", "Cahaya", "Pelestarian Alam"],
-        "Bahasa Indonesia": ["Gagasan Pokok", "Wawancara", "Puisi", "Teks Non-Fiksi"],
-        "Bahasa Inggris": ["My Living Room", "Kitchen Utensils", "Present Continuous", "Transportation"]
-    },
-    "5 SD": {
-        "Matematika": ["Operasi Pecahan", "Kecepatan dan Debit", "Skala dan Denah", "Volume Kubus & Balok", "Jaring-jaring Bangun Ruang"],
-        "IPA": ["Organ Pernapasan", "Organ Pencernaan", "Ekosistem", "Panas dan Perpindahannya", "Siklus Air"],
-        "Bahasa Indonesia": ["Iklan", "Pantun", "Surat Undangan", "Peristiwa Kebangsaan"],
-        "Bahasa Inggris": ["Health Problems", "Ordering Food", "Comparison (Degrees)", "Shape and Size"]
-    },
-    "6 SD": {
-        "Matematika": ["Bilangan Bulat Negatif", "Lingkaran", "Bangun Ruang Campuran", "Modus Median Mean", "Operasi Hitung Campuran"],
-        "IPA": ["Perkembangbiakan Makhluk Hidup", "Listrik", "Magnet", "Tata Surya", "Pubertas"],
-        "Bahasa Indonesia": ["Teks Laporan", "Pidato", "Formulir", "Teks Eksplanasi"],
-        "Bahasa Inggris": ["Simple Past Tense", "Direction", "Government", "Holiday Plan"]
-    }
+    "1 SD": {"Matematika": ["Bilangan sampai 10", "Penjumlahan & Pengurangan", "Bentuk Bangun Datar", "Mengukur Panjang Benda", "Mengenal Waktu"], "IPA": ["Anggota Tubuh", "Pancaindra", "Siang dan Malam", "Benda Hidup & Mati"], "Bahasa Indonesia": ["Mengenal Huruf", "Suku Kata", "Perkenalan Diri", "Benda di Sekitarku"], "Bahasa Inggris": ["Numbers 1-10", "Colors", "My Body", "Greetings"]},
+    "2 SD": {"Matematika": ["Perkalian Dasar", "Pembagian Dasar", "Bangun Datar & Ruang", "Pengukuran Berat (kg, ons)", "Nilai Uang"], "IPA": ["Wujud Benda (Padat, Cair, Gas)", "Panas dan Cahaya", "Tempat Hidup Hewan"], "Bahasa Indonesia": ["Ungkapan Santun", "Tanda Baca", "Puisi Anak", "Menjaga Kesehatan"], "Bahasa Inggris": ["Parts of House", "Daily Activities", "Numbers 11-20", "Animals"]},
+    "3 SD": {"Matematika": ["Pecahan Sederhana", "Simetri & Sudut", "Luas & Keliling Persegi", "Garis Bilangan", "Diagram Gambar"], "IPA": ["Ciri-ciri Makhluk Hidup", "Perubahan Wujud Benda", "Cuaca dan Musim", "Energi Alternatif"], "Bahasa Indonesia": ["Dongeng Hewan (Fabel)", "Lambang Pramuka", "Denah dan Arah", "Kalimat Saran"], "Bahasa Inggris": ["Telling Time", "Days of Week", "Hobby", "Professions"]},
+    "4 SD": {"Matematika": ["Pecahan Senilai", "KPK dan FPB", "Segi Banyak", "Pembulatan Bilangan", "Diagram Batang"], "IPA": ["Gaya dan Gerak", "Sumber Energi", "Bunyi dan Pendengaran", "Cahaya", "Pelestarian Alam"], "Bahasa Indonesia": ["Gagasan Pokok", "Wawancara", "Puisi", "Teks Non-Fiksi"], "Bahasa Inggris": ["My Living Room", "Kitchen Utensils", "Present Continuous", "Transportation"]},
+    "5 SD": {"Matematika": ["Operasi Pecahan", "Kecepatan dan Debit", "Skala dan Denah", "Volume Kubus & Balok", "Jaring-jaring Bangun Ruang"], "IPA": ["Organ Pernapasan", "Organ Pencernaan", "Ekosistem", "Panas dan Perpindahannya", "Siklus Air"], "Bahasa Indonesia": ["Iklan", "Pantun", "Surat Undangan", "Peristiwa Kebangsaan"], "Bahasa Inggris": ["Health Problems", "Ordering Food", "Comparison (Degrees)", "Shape and Size"]},
+    "6 SD": {"Matematika": ["Bilangan Bulat Negatif", "Lingkaran", "Bangun Ruang Campuran", "Modus Median Mean", "Operasi Hitung Campuran"], "IPA": ["Perkembangbiakan Makhluk Hidup", "Listrik", "Magnet", "Tata Surya", "Pubertas"], "Bahasa Indonesia": ["Teks Laporan", "Pidato", "Formulir", "Teks Eksplanasi"], "Bahasa Inggris": ["Simple Past Tense", "Direction", "Government", "Holiday Plan"]}
 }
 
 LABEL_BENTUK = {
@@ -163,7 +127,7 @@ LABEL_BENTUK = {
     "Uraian": "Jawablah pertanyaan berikut dengan tepat"
 }
 
-# --- HELPER & WORD ENGINE ---
+# --- HELPER & WORD ---
 def get_clean_options(item):
     opsi_raw = item.get('opsi') or []
     labels = ['A', 'B', 'C', 'D']
@@ -177,9 +141,7 @@ def get_clean_options(item):
     return clean
 
 def set_table_header_bg(cell):
-    shading_elm = OxmlElement('w:shd')
-    shading_elm.set(qn('w:fill'), 'D1E3F3')
-    cell._tc.get_or_add_tcPr().append(shading_elm)
+    shading_elm = OxmlElement('w:shd'); shading_elm.set(qn('w:fill'), 'D1E3F3'); cell._tc.get_or_add_tcPr().append(shading_elm)
 
 def create_docx(data_soal, mapel, kelas):
     doc = Document()
@@ -187,8 +149,8 @@ def create_docx(data_soal, mapel, kelas):
     doc.add_paragraph(f'Kelas: {kelas}')
     doc.add_heading('A. DAFTAR SOAL', level=1)
     for idx, item in enumerate(data_soal):
-        bentuk = item.get('bentuk', ''); keterangan = LABEL_BENTUK.get(bentuk, "")
-        p = doc.add_paragraph(); p.add_run(f"Soal {idx+1} ({keterangan})").italic = True
+        bentuk = item.get('bentuk', ''); ket = LABEL_BENTUK.get(bentuk, "")
+        p = doc.add_paragraph(); p.add_run(f"Soal {idx+1} ({ket})").italic = True
         doc.add_paragraph(item.get('soal',''), style='Normal').bold = True
         if bentuk == "PG Sederhana":
             for op in get_clean_options(item): doc.add_paragraph(op)
@@ -200,8 +162,7 @@ def create_docx(data_soal, mapel, kelas):
             for cell in hdr: set_table_header_bg(cell)
             for i, kat in enumerate(item.get('kategori_pernyataan', [])):
                 row = table.add_row().cells; row[0].text = f"{['A','B','C','D'][i]}. {kat['pernyataan']}"
-        elif bentuk == "Uraian":
-            doc.add_paragraph("Jawaban: ...................................................................")
+        elif bentuk == "Uraian": doc.add_paragraph("Jawaban: ...................................................................")
         doc.add_paragraph(f"Materi : {item.get('materi','')} | Level : {item.get('level','')}")
     doc.add_page_break(); doc.add_heading('B. KUNCI JAWABAN & PEMBAHASAN', level=1)
     for idx, item in enumerate(data_soal):
@@ -211,8 +172,8 @@ def create_docx(data_soal, mapel, kelas):
             kunci = ", ".join([f"{['A','B','C','D'][i]}: {k['kunci']}" for i, k in enumerate(item.get('kategori_pernyataan', []))])
         doc.add_paragraph(f"KUNCI: {kunci}").bold = True
         doc.add_paragraph("PEMBAHASAN:")
-        for step in item.get('pembahasan_langkah', []): doc.add_paragraph(f"• {step}")
-        for analysis in item.get('analisis_opsi', []): doc.add_paragraph(f"• {analysis}")
+        for s in item.get('pembahasan_langkah', []): doc.add_paragraph(f"• {s}")
+        for a in item.get('analisis_opsi', []): doc.add_paragraph(f"• {a}")
         doc.add_paragraph(item.get('kesimpulan_akhir', '')).bold = True
         doc.add_paragraph("-" * 20)
     bio = BytesIO(); doc.save(bio); bio.seek(0); return bio
@@ -223,7 +184,7 @@ with st.sidebar:
     if os.path.exists("logo.png"):
         c1, c2, c3 = st.columns([1, 2, 1]); c2.image("logo.png", width=100)
     st.write(f"👤 **{st.session_state.user.email}**")
-    if st.button("🚪 Logout", key="logout_app_main"):
+    if st.button("🚪 Logout", key="logout_btn_p"):
         supabase.auth.sign_out(); st.session_state.user = None; st.rerun()
     st.divider()
     st.markdown("### ⚙️ Konfigurasi")
@@ -239,49 +200,44 @@ with st.sidebar:
             fmt = st.selectbox("Bentuk Soal", list(LABEL_BENTUK.keys()), key=f"f_{i}_{suffix}")
             req_details.append({"topik": top, "level": lvl, "bentuk": fmt})
     c1, c2 = st.columns(2)
-    btn_gen = c1.button("🚀 Generate", type="primary")
-    if c2.button("🔄 Reset"):
+    btn_gen = c1.button("🚀 Generate", type="primary", key="btn_gen_main")
+    if c2.button("🔄 Reset", key="btn_reset_main"):
         st.session_state.hasil_soal = None; st.session_state.reset_counter += 1; st.rerun()
 
 st.markdown('<div class="header-title">Generator Soal SD</div>', unsafe_allow_html=True)
 st.markdown('<div class="header-sub">Berdasarkan Kurikulum Merdeka</div>', unsafe_allow_html=True)
 st.write("---")
 
-# --- PERSONA MASTER (LOCKED) ---
+# --- PERSONA & GENERATOR (LOCKED) ---
 if btn_gen:
     client = OpenAI(api_key=api_key)
     status_box = st.status("✅ Soal Dalam Proses Pembuatan...", expanded=True)
     summary = "\n".join([f"- Soal {i+1}: {r['topik']}, {r['level']}, {r['bentuk']}" for i, r in enumerate(req_details)])
-    
-    # PERSONA AKUMULATIF (JANTUNG SISTEM)
-    system_prompt = """Anda adalah Pakar Pengembang Kurikulum Merdeka Kemdikbud RI dan Penulis Bank Soal Profesional. 
-    Wajib memberikan jawaban dalam format json murni.
-    KARAKTERISTIK HOTS: Analisis (C4-C6), Berpikir Kritis, Kontekstual Dunia Nyata.
-    ATURAN KETAT: 
-    1. PG Kompleks: Minimal 2 benar. Kunci wajib menyebutkan huruf (A, C, dst). Pembahasan per opsi (analisis_opsi).
-    2. PG Kompleks Kategori: 4 Pernyataan label A-D. Jelaskan alasan Benar/Salah per label (analisis_opsi).
-    3. Korelasi: Pertanyaan dan Pilihan HARUS berhubungan erat secara logis.
-    4. Kesimpulan: Wajib diakhiri 'Jadi, jawaban yang benar adalah...'."""
-
+    system_prompt = """Pakar Kurikulum Merdeka & Bank Soal Profesional SD. Output JSON murni. 
+    Aturan: HOTS (C4-C6), Kontekstual. PG Kompleks min 2 benar (A, C, dst). Kategori 4 pernyataan A-D. Pembahasan per opsi & kesimpulan akhir."""
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": f"Buat json soal SD Kurikulum Merdeka:\n{summary}"}],
             response_format={"type": "json_object"}
         )
+        # Update session state langsung
         st.session_state.hasil_soal = json.loads(response.choices[0].message.content).get("soal_list", [])
         status_box.update(label="✅ Berhasil!", state="complete", expanded=False)
-        st.rerun()
     except Exception as e: st.error(f"Gagal: {e}")
 
-# --- TAMPILAN HASIL (LOCKED DISPLAY) ---
+# ==========================================
+# --- 4. TAMPILAN HASIL (LOCKED & ANTI-BLANK) ---
+# ==========================================
+# Letakkan di luar blok IF agar tetap ada saat rerun radio/checkbox
 if st.session_state.hasil_soal:
-    st.download_button("📥 Download Word", create_docx(st.session_state.hasil_soal, mapel_sel, kelas_sel), f"Soal_Master_{mapel_sel}.docx")
+    st.download_button("📥 Download Word", create_docx(st.session_state.hasil_soal, mapel_sel, kelas_sel), f"Soal_AKM_{mapel_sel}.docx")
     for idx, item in enumerate(st.session_state.hasil_soal):
         with st.container(border=True):
             bentuk = item.get('bentuk'); ket = LABEL_BENTUK.get(bentuk)
             st.markdown(f"#### Soal {idx+1} *({ket})*")
             st.markdown(f"**{item.get('soal','')}**")
+            
             if bentuk == "PG Sederhana": st.radio("Jawaban:", get_clean_options(item), key=f"ans_{idx}_{suffix}", index=None)
             elif bentuk == "PG Kompleks":
                 for o_idx, opt in enumerate(get_clean_options(item)): st.checkbox(opt, key=f"chk_{idx}_{o_idx}_{suffix}")
@@ -297,6 +253,7 @@ if st.session_state.hasil_soal:
                     with c2: st.checkbox(" ", key=f"b_{idx}_{k_idx}_{suffix}", label_visibility="collapsed")
                     with c3: st.checkbox(" ", key=f"s_{idx}_{k_idx}_{suffix}", label_visibility="collapsed")
             elif bentuk == "Uraian": st.text_area("Jawaban:", key=f"txt_{idx}_{suffix}")
+
             st.markdown(f"<div class='metadata-text'>Materi : {item.get('materi','')} | Level : {item.get('level','')}</div>", unsafe_allow_html=True)
             with st.expander("Lihat Kunci & Pembahasan Mendalam"):
                 kunci = item.get('kunci_jawaban_teks', '')
@@ -307,6 +264,6 @@ if st.session_state.hasil_soal:
                 for a in item.get('analisis_opsi', []): st.write(f"• {a}")
                 st.info(f"**Kesimpulan:** {item.get('kesimpulan_akhir','')}")
 
-# --- FOOTER (DIKUNCI) ---
+# FOOTER (DIKUNCI)
 st.write("---")
 st.markdown("<div style='text-align: center; font-size: 12px;'><b><p>Aplikasi Generator Soal ini Milik Bimbingan Belajar Digital \"Akademi Pelajar\"</p><p>Dilarang menyebarluaskan tanpa persetujuan tertulis dari Akademi Pelajar</p><p>Semua hak cipta dilindungi undang-undang</p></b></div>", unsafe_allow_html=True)
