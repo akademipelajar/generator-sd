@@ -22,16 +22,18 @@ if "user" not in st.session_state:
     st.session_state.user = None
 
 # --- TOMBOL LOGIN GOOGLE ---
+
+REDIRECT_URL = st.secrets["REDIRECT_URL"]
+
 def login_google():
     res = supabase.auth.sign_in_with_oauth({
         "provider": "google",
         "options": {
-            "redirect_to": st.experimental_get_query_params().get(
-                "redirect", [st.experimental_get_url()]
-            )[0]
+            "redirect_to": REDIRECT_URL
         }
     })
-    st.markdown(f"[Login Google]({res.url})")
+
+    st.markdown(f"[🔐 Login dengan Google]({res.url})", unsafe_allow_html=True)
 
 # --- GUARD (Wajib Login) ---
 query = st.experimental_get_query_params()
@@ -332,4 +334,5 @@ if st.session_state.hasil_soal:
 # --- 10. FOOTER (DIKUNCI TOTAL) ---
 st.write("---")
 st.markdown("<div style='text-align: center; font-size: 12px;'><b><p>Aplikasi Generator Soal ini Milik Bimbingan Belajar Digital \"Akademi Pelajar\"</p><p>Dilarang menyebarluaskan tanpa persetujuan tertulis dari Akademi Pelajar</p><p>Semua hak cipta dilindungi undang-undang</p></b></div>", unsafe_allow_html=True)
+
 
