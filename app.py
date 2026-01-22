@@ -9,6 +9,60 @@ from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 from openai import OpenAI
 
+# --- AUTH HELPER ---
+from supabase import create_client
+import streamlit as st
+
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_ANON_KEY"]
+
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+if "user" not in st.session_state:
+    st.session_state.user = None
+
+# --- TOMBOL LOGIN GOOGLE ---
+def login_google():
+    res = supabase.auth.sign_in_with_oauth({
+        "provider": "google",
+        "options": {
+            "redirect_to": st.experimental_get_query_params().get(
+                "redirect", [st.experimental_get_url()]
+            )[0]
+        }
+    })
+    st.markdown(f"[Login Google]({res.url})")
+
+# --- GUARD (Wajib Login) ---
+query = st.experimental_get_query_params()
+
+if "access_token" in query:
+    session = supabase.auth.get_session_from_url(
+        st.experimental_get_url()
+    )
+    st.session_state.user = session.user
+    st.experimental_set_query_params()  # bersihin URL
+
+if not st.session_state.user:
+    st.title("🔐 Login Dulu")
+    login_google()
+    st.stop()
+
+user_id = st.session_state.user.id
+
+role_res = supabase.table("profiles") \
+    .select("role") \
+    .eq("id", user_id) \
+    .single() \
+    .execute()
+
+st.session_state.role = role_res.data["role"]
+
+if st.session_state.role != "admin":
+    st.warning("Fitur ini khusus admin")
+    st.stop()
+
+
 # --- 1. KONFIGURASI HALAMAN ---
 st.set_page_config(page_title="Generator Soal SD", page_icon="📚", layout="wide")
 
@@ -278,3 +332,4 @@ if st.session_state.hasil_soal:
 # --- 10. FOOTER (DIKUNCI TOTAL) ---
 st.write("---")
 st.markdown("<div style='text-align: center; font-size: 12px;'><b><p>Aplikasi Generator Soal ini Milik Bimbingan Belajar Digital \"Akademi Pelajar\"</p><p>Dilarang menyebarluaskan tanpa persetujuan tertulis dari Akademi Pelajar</p><p>Semua hak cipta dilindungi undang-undang</p></b></div>", unsafe_allow_html=True)
+
