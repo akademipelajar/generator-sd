@@ -11,11 +11,11 @@ from openai import OpenAI
 from supabase import create_client
 
 # ==========================================
-# --- 1. INITIAL SETUP & CONFIG (LOCKED) ---
+# --- 1. INITIAL SETUP ---
 # ==========================================
 st.set_page_config(page_title="Generator Soal SD", page_icon="📚", layout="wide")
 
-# Supabase Client
+# Supabase Client Init
 try:
     supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_ANON_KEY"])
 except Exception as e:
@@ -31,80 +31,87 @@ if 'reset_counter' not in st.session_state:
     st.session_state.reset_counter = 0
 
 # ==========================================
-# --- 2. AUTHENTICATION GATING (FIXED) ---
+# --- 2. AUTHENTICATION ENGINE (HARD-GATE) ---
 # ==========================================
 
-def show_auth_gate():
-    # Cek Recovery Mode Terlebih Dahulu
+# Fungsi Cek Session Otomatis
+def check_supabase_session():
+    if st.session_state.user is None:
+        try:
+            res = supabase.auth.get_user()
+            if res and res.user:
+                st.session_state.user = res.user
+        except:
+            pass
+
+check_supabase_session()
+
+# Halaman Gerbang Login
+def show_login_screen():
+    # Cek Recovery Mode (Reset Password)
     q_params = st.query_params
     if "type" in q_params and q_params["type"] == "recovery":
         st.markdown("<br><br>", unsafe_allow_html=True)
         c1, c2, c3 = st.columns([1, 2, 1])
         with c2:
             st.title("🔄 Setel Password Baru")
-            new_p = st.text_input("Password Baru", type="password", key="recovery_pwd")
-            if st.button("Simpan Password Baru", key="btn_save_recovery"):
+            new_p = st.text_input("Password Baru", type="password", key="rec_pass_input")
+            if st.button("Simpan Password Baru", key="btn_rec_save"):
                 try:
                     supabase.auth.update_user({"password": new_p})
                     st.success("✅ Berhasil! Silakan login kembali.")
                     time.sleep(2)
                     st.query_params.clear()
                     st.rerun()
-                except Exception as e:
-                    st.error(f"Gagal: {str(e)}")
+                except Exception as e: st.error(f"Gagal: {str(e)}")
         st.stop()
 
-    # Tampilan Login/Register
+    # Form Login Utama
     st.markdown("<br><br>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns([1, 2, 1])
     with c2:
         st.title("🔐 Akses Akademi Pelajar")
-        tab_log, tab_reg, tab_fgt = st.tabs(["Login", "Daftar Akun", "Lupa Password"])
+        tab_l, tab_r, tab_f = st.tabs(["Login", "Daftar Akun", "Lupa Password"])
         
-        with tab_log:
-            e = st.text_input("Email", key="log_e")
-            p = st.text_input("Password", type="password", key="log_p")
-            if st.button("Masuk", key="btn_log_submit"):
+        with tab_l:
+            l_email = st.text_input("Email", key="l_email_inp")
+            l_pass = st.text_input("Password", type="password", key="l_pass_inp")
+            if st.button("Masuk", key="l_btn_sub"):
                 try:
-                    res = supabase.auth.sign_in_with_password({"email": e, "password": p})
+                    res = supabase.auth.sign_in_with_password({"email": l_email, "password": l_pass})
                     st.session_state.user = res.user
                     st.success("✅ Berhasil!")
                     time.sleep(0.5)
                     st.rerun()
                 except Exception as ex: st.error(f"Gagal: {str(ex)}")
         
-        with tab_reg:
-            re_e = st.text_input("Email Baru", key="reg_e")
-            re_p = st.text_input("Password Baru", type="password", key="reg_p")
-            if st.button("Daftar Sekarang", key="btn_reg_submit"):
+        with tab_r:
+            r_email = st.text_input("Email Baru", key="r_email_inp")
+            r_pass = st.text_input("Password Baru", type="password", key="r_pass_inp")
+            if st.button("Daftar Sekarang", key="r_btn_sub"):
                 try:
-                    supabase.auth.sign_up({"email": re_e, "password": re_p})
+                    supabase.auth.sign_up({"email": r_email, "password": r_pass})
                     st.success("✅ Terdaftar! Silakan cek email atau login.")
                 except Exception as ex: st.error(f"Gagal: {str(ex)}")
         
-        with tab_fgt:
-            f_e = st.text_input("Email Terdaftar", key="fgt_e")
-            if st.button("Kirim Link Reset", key="btn_fgt_submit"):
+        with tab_f:
+            f_email = st.text_input("Email Terdaftar", key="f_email_inp")
+            if st.button("Kirim Link Reset", key="f_btn_sub"):
                 try:
-                    supabase.auth.reset_password_for_email(f_e, {"redirect_to": "https://generator-sd.streamlit.app"})
+                    supabase.auth.reset_password_for_email(f_email, {"redirect_to": "https://generator-sd.streamlit.app"})
                     st.success("📩 Link telah dikirim!")
                 except Exception as ex: st.error(f"Gagal: {str(ex)}")
-    st.stop()
 
-# Guard Logic
+# --- GATE KONTROL ---
 if st.session_state.user is None:
-    try:
-        session_res = supabase.auth.get_session()
-        if session_res and session_res.session:
-            st.session_state.user = session_res.user
-        else:
-            show_auth_gate()
-    except:
-        show_auth_gate()
+    show_login_screen()
+    st.stop() # Hentikan di sini jika belum login
 
 # ==========================================
-# --- 3. STYLE CSS (DIKUNCI TOTAL) ---
+# --- 3. APLIKASI UTAMA (HANYA JALAN JIKA LOGIN) ---
 # ==========================================
+
+# --- STYLE CSS (DIKUNCI TOTAL) ---
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@700&family=Poppins:ital,wght@1,700&display=swap');
@@ -120,9 +127,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ==========================================
-# --- 4. DATABASE MATERI LENGKAP (DIKUNCI) ---
-# ==========================================
+# --- DATABASE MATERI LENGKAP (DIKUNCI TOTAL) ---
 DATABASE_MATERI = {
     "1 SD": {
         "Matematika": ["Bilangan sampai 10", "Penjumlahan & Pengurangan", "Bentuk Bangun Datar", "Mengukur Panjang Benda", "Mengenal Waktu"],
@@ -169,7 +174,7 @@ LABEL_BENTUK = {
     "Uraian": "Jawablah pertanyaan berikut dengan tepat"
 }
 
-# --- 5. HELPER & WORD ENGINE ---
+# --- HELPER & WORD ENGINE (DIKUNCI) ---
 def get_clean_options(item):
     opsi_raw = item.get('opsi') or []
     labels = ['A', 'B', 'C', 'D']
@@ -194,9 +199,8 @@ def create_docx(data_soal, mapel, kelas):
     doc.add_heading('A. DAFTAR SOAL', level=1)
     for idx, item in enumerate(data_soal):
         bentuk = item.get('bentuk', '')
-        keterangan = LABEL_BENTUK.get(bentuk, "")
         p = doc.add_paragraph()
-        p.add_run(f"Soal {idx+1} ({keterangan})").italic = True
+        p.add_run(f"Soal {idx+1} ({LABEL_BENTUK.get(bentuk, '')})").italic = True
         doc.add_paragraph(item.get('soal',''), style='Normal').bold = True
         if bentuk == "PG Sederhana":
             for op in get_clean_options(item): doc.add_paragraph(op)
@@ -228,13 +232,13 @@ def create_docx(data_soal, mapel, kelas):
         doc.add_paragraph("-" * 20)
     bio = BytesIO(); doc.save(bio); bio.seek(0); return bio
 
-# --- 6. SIDEBAR & MAIN HEADER (DIKUNCI) ---
+# --- SIDEBAR (DIKUNCI) ---
 with st.sidebar:
     suffix = st.session_state.reset_counter
     if os.path.exists("logo.png"):
         c1, c2, c3 = st.columns([1, 2, 1]); c2.image("logo.png", width=100)
     st.write(f"👤 **{st.session_state.user.email}**")
-    if st.button("🚪 Logout", key="logout_main"):
+    if st.button("🚪 Logout", key="logout_btn_main"):
         supabase.auth.sign_out()
         st.session_state.user = None
         st.rerun()
@@ -243,7 +247,7 @@ with st.sidebar:
     api_key = st.secrets["OPENAI_API_KEY"]
     kelas_sel = st.selectbox("Pilih Kelas", list(DATABASE_MATERI.keys()), key=f"k_{suffix}")
     mapel_sel = st.selectbox("Mata Pelajaran", list(DATABASE_MATERI[kelas_sel].keys()), key=f"m_{suffix}")
-    jml_soal = st.slider("Jumlah Soal", 1, 10, 2, key=f"j_{suffix}")
+    jml_soal = st.slider("Jumlah Soal (Max 10)", 1, 10, 2, key=f"j_{suffix}")
     req_details = []
     for i in range(jml_soal):
         with st.expander(f"Soal {i+1}", expanded=(i==0)):
@@ -251,45 +255,39 @@ with st.sidebar:
             lvl = st.selectbox("Level", ["Mudah", "Sedang", "Sulit (HOTS)"], key=f"l_{i}_{suffix}")
             fmt = st.selectbox("Bentuk Soal", list(LABEL_BENTUK.keys()), key=f"f_{i}_{suffix}")
             req_details.append({"topik": top, "level": lvl, "bentuk": fmt})
-    c_b1, c_b2 = st.columns(2)
-    btn_gen = c_b1.button("🚀 Generate", type="primary")
-    if c_b2.button("🔄 Reset"):
+    c1, c2 = st.columns(2)
+    btn_gen = c1.button("🚀 Generate", type="primary", key="btn_gen_main")
+    if c2.button("🔄 Reset", key="btn_reset_main"):
         st.session_state.hasil_soal = None; st.session_state.reset_counter += 1; st.rerun()
 
+# --- MAIN PAGE ---
 st.markdown('<div class="header-title">Generator Soal SD</div>', unsafe_allow_html=True)
 st.markdown('<div class="header-sub">Berdasarkan Kurikulum Merdeka</div>', unsafe_allow_html=True)
 st.write("---")
 
-# ==========================================
-# --- 7. PERSONA & AI LOGIC (DIKUNCI) ---
-# ==========================================
+# --- PERSONA & GENERATOR (DIKUNCI) ---
 if btn_gen:
     client = OpenAI(api_key=api_key)
     status_box = st.status("✅ Soal Dalam Proses Pembuatan...", expanded=True)
     summary = "\n".join([f"- Soal {i+1}: {r['topik']}, {r['level']}, {r['bentuk']}" for i, r in enumerate(req_details)])
-    
     system_prompt = """Anda adalah Pakar Pengembang Kurikulum Merdeka Kemdikbud RI dan Penulis Bank Soal Profesional. 
     Wajib memberikan jawaban dalam format json murni.
     KARAKTERISTIK HOTS: Analisis (C4-C6), Berpikir Kritis, Kontekstual Dunia Nyata.
-    ATURAN KUNCI:
+    ATURAN KUNCI: 
     1. PG Kompleks: Minimal 2 benar. Kunci wajib huruf (A, C, dst). Pembahasan per opsi.
     2. PG Kompleks Kategori: 4 Pernyataan label A-D. Jelaskan alasan Benar/Salah per label (analisis_opsi).
     3. Kesimpulan: Wajib diakhiri 'Jadi, jawaban yang benar adalah...'."""
-
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": f"Buat json soal SD Kurikulum Merdeka:\n{summary}"}],
             response_format={"type": "json_object"}
         )
-        data = json.loads(response.choices[0].message.content).get("soal_list", [])
-        st.session_state.hasil_soal = data
+        st.session_state.hasil_soal = json.loads(response.choices[0].message.content).get("soal_list", [])
         status_box.update(label="✅ Selesai!", state="complete", expanded=False)
     except Exception as e: st.error(f"Gagal: {e}")
 
-# ==========================================
-# --- 8. TAMPILAN HASIL (DIKUNCI) ---
-# ==========================================
+# --- TAMPILAN HASIL (DIKUNCI) ---
 if st.session_state.hasil_soal:
     st.download_button("📥 Download Word", create_docx(st.session_state.hasil_soal, mapel_sel, kelas_sel), f"Soal_AKM_{mapel_sel}.docx")
     for idx, item in enumerate(st.session_state.hasil_soal):
@@ -297,9 +295,7 @@ if st.session_state.hasil_soal:
             bentuk = item.get('bentuk'); keterangan = LABEL_BENTUK.get(bentuk)
             st.markdown(f"#### Soal {idx+1} *({keterangan})*")
             st.markdown(f"**{item.get('soal','')}**")
-            
-            if bentuk == "PG Sederhana":
-                st.radio("Pilih jawaban:", get_clean_options(item), key=f"ans_{idx}_{suffix}", index=None)
+            if bentuk == "PG Sederhana": st.radio("Pilih jawaban:", get_clean_options(item), key=f"ans_{idx}_{suffix}", index=None)
             elif bentuk == "PG Kompleks":
                 for o_idx, opt in enumerate(get_clean_options(item)): st.checkbox(opt, key=f"chk_{idx}_{o_idx}_{suffix}")
             elif bentuk == "PG Kompleks Kategori":
@@ -307,19 +303,18 @@ if st.session_state.hasil_soal:
                 h1.markdown("<div class='table-header'>Pernyataan</div>", unsafe_allow_html=True)
                 h2.markdown("<div class='table-header'>Benar</div>", unsafe_allow_html=True)
                 h3.markdown("<div class='table-header'>Salah</div>", unsafe_allow_html=True)
-                lbls = ['A', 'B', 'C', 'D']
+                labels = ['A', 'B', 'C', 'D']
                 for k_idx, kat in enumerate(item.get('kategori_pernyataan', [])):
                     c1, c2, c3 = st.columns([4, 1, 1])
-                    c1.markdown(f"<div class='table-cell'>{lbls[k_idx]}. {kat['pernyataan']}</div>", unsafe_allow_html=True)
+                    c1.markdown(f"<div class='table-cell'>{labels[k_idx]}. {kat['pernyataan']}</div>", unsafe_allow_html=True)
                     with c2: st.checkbox(" ", key=f"b_{idx}_{k_idx}_{suffix}", label_visibility="collapsed")
                     with c3: st.checkbox(" ", key=f"s_{idx}_{k_idx}_{suffix}", label_visibility="collapsed")
             elif bentuk == "Uraian": st.text_area("Tuliskan jawaban:", key=f"txt_{idx}_{suffix}")
-
             st.markdown(f"<div class='metadata-text'>Materi : {item.get('materi','')} | Level : {item.get('level','')}</div>", unsafe_allow_html=True)
             with st.expander("Lihat Kunci & Pembahasan Mendalam"):
                 kunci = item.get('kunci_jawaban_teks', '')
                 if not kunci and bentuk == "PG Kompleks Kategori":
-                    kunci = ", ".join([f"{['A','B','C','D'][i]}: {k['kunci']}" for i, k in enumerate(item.get('kategori_pernyataan', []))])
+                    kunci = ", ".join([f"{labels[i]}: {k['kunci']}" for i, k in enumerate(item.get('kategori_pernyataan', []))])
                 st.success(f"**Kunci:** {kunci}")
                 for s in item.get('pembahasan_langkah', []): st.write(f"✅ {s}")
                 for a in item.get('analisis_opsi', []): st.write(f"• {a}")
